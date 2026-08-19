@@ -487,7 +487,7 @@ pytest tests
 ### 10.2 算法相关
 
 - Raman 数据库匹配结果适合作为辅助判读，不应替代人工确认
-- `LSPR AI Workbench` 默认推荐使用 `backend_mode=auto`；在当前工作站环境下，`auto` 往往会实际回退到 `subprocess`，这属于预期行为而不是故障
+- `LSPR AI Workbench` 默认推荐使用 `lspr_backend_mode=auto`；在当前工作站环境下，`auto` 往往会实际回退到 `subprocess`，这属于预期行为而不是故障
 - 从数据库浏览器重新打开 `AI Runs` 依赖归档时保存的输入谱与比较元数据；旧版历史分析记录若缺少这些字段，可能只能查看指标而无法完整恢复图形
 
 ### 10.3 文档与数据库相关

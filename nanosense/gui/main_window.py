@@ -1444,6 +1444,9 @@ class AppWindow(QMainWindow):
             updated_settings = dialog.get_settings()
             self.app_settings.update(updated_settings)
             save_settings(self.app_settings)
+            self.app_settings = load_settings()
+            if self.lspr_workbench_window is not None:
+                self.lspr_workbench_window.reload_config(self.app_settings)
 
             new_theme = self.app_settings.get('theme', 'dark')
             theme_changed = new_theme != current_theme

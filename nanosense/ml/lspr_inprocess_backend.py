@@ -52,7 +52,7 @@ class InProcessLSPRBackend(LSPRBackend):
             return HealthCheckResponse(
                 ok=False,
                 backend='inprocess',
-                details={'backend_mode': 'inprocess'},
+                details={'lspr_backend_mode': 'inprocess'},
                 error=ErrorResponse(code='inprocess_unavailable', message=str(exc)),
             )
 

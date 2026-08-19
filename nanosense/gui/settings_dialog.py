@@ -101,12 +101,12 @@ class SettingsDialog(QDialog):
         self.lspr_master_root_label = QLabel()
         lspr_layout.addRow(self.lspr_master_root_label, lspr_root_layout)
 
-        self.lspr_default_model_mode_combo = QComboBox()
-        self.lspr_default_model_mode_combo.addItem("Auto", "auto")
-        self.lspr_default_model_mode_combo.addItem("In-process", "inprocess")
-        self.lspr_default_model_mode_combo.addItem("Subprocess", "subprocess")
-        self.lspr_default_model_mode_label = QLabel()
-        lspr_layout.addRow(self.lspr_default_model_mode_label, self.lspr_default_model_mode_combo)
+        self.lspr_backend_mode_combo = QComboBox()
+        self.lspr_backend_mode_combo.addItem("Auto", "auto")
+        self.lspr_backend_mode_combo.addItem("In-process", "inprocess")
+        self.lspr_backend_mode_combo.addItem("Subprocess", "subprocess")
+        self.lspr_backend_mode_label = QLabel()
+        lspr_layout.addRow(self.lspr_backend_mode_label, self.lspr_backend_mode_combo)
 
         self.lspr_default_artifact_dir_edit = QLineEdit()
         self.lspr_default_artifact_dir_browse_btn = QPushButton()
@@ -184,7 +184,7 @@ class SettingsDialog(QDialog):
 
         self.lspr_group.setTitle(self.tr("LSPR AI"))
         self.lspr_master_root_label.setText(self.tr("LSPR Master Root:"))
-        self.lspr_default_model_mode_label.setText(self.tr("Default Backend Mode:"))
+        self.lspr_backend_mode_label.setText(self.tr("Backend Mode:"))
         self.lspr_default_artifact_dir_label.setText(self.tr("Artifact Directory:"))
         self.lspr_batch_export_dir_label.setText(self.tr("Batch Export Directory:"))
         self.lspr_enable_digital_twin_overlay_label.setText(self.tr("Enable Digital Twin Overlay:"))
@@ -244,10 +244,10 @@ class SettingsDialog(QDialog):
         self.db_path_edit.setText(self.settings.get("database_path", default_db_path))
 
         self.lspr_master_root_edit.setText(self.settings.get("lspr_master_root", ""))
-        model_mode = self.settings.get("lspr_default_model_mode", "auto")
-        mode_index = self.lspr_default_model_mode_combo.findData(model_mode)
+        backend_mode = self.settings.get("lspr_backend_mode", "auto")
+        mode_index = self.lspr_backend_mode_combo.findData(backend_mode)
         if mode_index >= 0:
-            self.lspr_default_model_mode_combo.setCurrentIndex(mode_index)
+            self.lspr_backend_mode_combo.setCurrentIndex(mode_index)
         self.lspr_default_artifact_dir_edit.setText(self.settings.get("lspr_default_artifact_dir", ""))
         self.lspr_batch_export_dir_edit.setText(self.settings.get("lspr_batch_export_dir", ""))
         self.lspr_enable_digital_twin_overlay_checkbox.setChecked(
@@ -262,7 +262,9 @@ class SettingsDialog(QDialog):
         self.settings["theme"] = self.theme_combo.currentData()
         self.settings["database_path"] = self.db_path_edit.text()
         self.settings["lspr_master_root"] = self.lspr_master_root_edit.text()
-        self.settings["lspr_default_model_mode"] = self.lspr_default_model_mode_combo.currentData()
+        self.settings["lspr_backend_mode"] = self.lspr_backend_mode_combo.currentData()
+        self.settings.pop("lspr_default_model_mode", None)
+        self.settings.pop("backend_mode", None)
         self.settings["lspr_default_artifact_dir"] = self.lspr_default_artifact_dir_edit.text()
         self.settings["lspr_batch_export_dir"] = self.lspr_batch_export_dir_edit.text()
         self.settings["lspr_enable_digital_twin_overlay"] = (

@@ -9,7 +9,7 @@ from .lspr_subprocess_backend import SubprocessLSPRBackend
 
 def create_lspr_backend(config: Optional[Dict[str, Any]] = None) -> LSPRBackend:
     config = config or {}
-    backend_mode = str(config.get("backend_mode", "auto")).lower()
+    backend_mode = str(config.get("lspr_backend_mode", "auto")).strip().lower()
 
     if backend_mode == "inprocess":
         return InProcessLSPRBackend(config)
@@ -18,7 +18,7 @@ def create_lspr_backend(config: Optional[Dict[str, Any]] = None) -> LSPRBackend:
         return SubprocessLSPRBackend(config)
 
     if backend_mode != "auto":
-        raise ValueError(f"Unsupported backend_mode: {backend_mode}")
+        raise ValueError(f"Unsupported lspr_backend_mode: {backend_mode}")
 
     inprocess_backend = InProcessLSPRBackend(config)
     inprocess_health = inprocess_backend.health_check()

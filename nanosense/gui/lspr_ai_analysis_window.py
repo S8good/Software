@@ -37,7 +37,7 @@ from ..ml.lspr_ai_service import LSPRAIService, LSPRSpectrumComparisonResult
 class LSPRAIAnalysisWindow(QMainWindow):
     def __init__(self, spectra_data=None, config=None, service=None, parent=None):
         super().__init__(parent)
-        self.config = config or {}
+        self.config = dict(config or {})
         self._service = None
         if service is not None:
             self._service = service
@@ -55,6 +55,17 @@ class LSPRAIAnalysisWindow(QMainWindow):
         if self._service is None:
             self._service = LSPRAIService(config=self.config)
         return self._service
+
+    def reload_config(self, config=None):
+        self.config = dict(config or {})
+        self._service = LSPRAIService(config=self.config)
+        mode_index = self.model_mode_combo.findData(
+            self.config.get("lspr_backend_mode", "auto")
+        )
+        if mode_index >= 0:
+            self.model_mode_combo.setCurrentIndex(mode_index)
+        if hasattr(self, "batch_prediction_tab"):
+            self.batch_prediction_tab.config = self.config
 
     def _build_ui(self):
         central = QWidget(self)
@@ -104,6 +115,11 @@ class LSPRAIAnalysisWindow(QMainWindow):
         self.model_mode_combo.addItem("Auto", "auto")
         self.model_mode_combo.addItem("In-process", "inprocess")
         self.model_mode_combo.addItem("Subprocess", "subprocess")
+        mode_index = self.model_mode_combo.findData(
+            self.config.get("lspr_backend_mode", "auto")
+        )
+        if mode_index >= 0:
+            self.model_mode_combo.setCurrentIndex(mode_index)
         ai_mode_row.addWidget(self.model_mode_combo)
         ai_layout.addLayout(ai_mode_row)
         self.run_ai_button = QPushButton("Run AI Prediction")

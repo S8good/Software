@@ -31,7 +31,7 @@ def test_save_lspr_ai_prediction_creates_analysis_run_and_metrics(tmp_path):
         },
         input_context={
             "model_mode": "v2",
-            "backend_mode": "subprocess",
+            "lspr_backend_mode": "subprocess",
             "source_type": "file_import",
             "source_file": "demo.csv",
         },

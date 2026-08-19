@@ -47,7 +47,7 @@ def test_auto_backend_prefers_inprocess_when_health_check_passes(monkeypatch):
     monkeypatch.setattr("nanosense.ml.lspr_backend_factory.InProcessLSPRBackend", HealthyInProcess)
     monkeypatch.setattr("nanosense.ml.lspr_backend_factory.SubprocessLSPRBackend", FailingSubprocess)
 
-    backend = create_lspr_backend({"backend_mode": "auto"})
+    backend = create_lspr_backend({"lspr_backend_mode": "auto"})
     assert isinstance(backend, HealthyInProcess)
 
 
@@ -68,7 +68,7 @@ def test_auto_backend_falls_back_to_subprocess_when_inprocess_fails(monkeypatch)
     monkeypatch.setattr("nanosense.ml.lspr_backend_factory.InProcessLSPRBackend", FailingInProcess)
     monkeypatch.setattr("nanosense.ml.lspr_backend_factory.SubprocessLSPRBackend", HealthySubprocess)
 
-    backend = create_lspr_backend({"backend_mode": "auto"})
+    backend = create_lspr_backend({"lspr_backend_mode": "auto"})
     assert isinstance(backend, HealthySubprocess)
 
 
