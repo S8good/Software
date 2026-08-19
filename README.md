@@ -445,16 +445,7 @@ pytest tests
 
 ### 8.2 GitHub Actions
 
-当前工作流目录：
-
-- `.github/workflows/validation.yml`
-- `.github/workflows/governance.yml`
-
-主要用途：
-
-- 自动运行迁移验证
-- 自动生成治理 / 验证报告
-- 为数据库治理相关改动提供回归保护
+当前仓库尚未配置 GitHub Actions。迁移验证和治理脚本可以在 py39 环境中手动运行；后续启用 CI 时，应将严格校验、报告归档和回归测试纳入工作流。
 
 ---
 

@@ -42,5 +42,5 @@
 
 ### 迁移验证自动化
 - 定期运行 `scripts/validate_migration.py`，并使用 `--report-file`、`--history-file` 持续沉淀指标。
-- 在 `.github/workflows/validation.yml` 中加入趋势汇总与附件上传，方便回溯。
+- CI 配置完成后，加入趋势汇总与附件上传，方便回溯。
 - 结合抽样参数（`--sample-rate`、`--max-latency`、`--batch-status`）规划不同阶段的校验策略。

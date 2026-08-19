@@ -15,6 +15,9 @@ htmlcov/
 # Local databases / generated data
 data/
 *.db
+*.sqlite
+*.sqlite3
+*.db-journal
 *.db-shm
 *.db-wal
 
