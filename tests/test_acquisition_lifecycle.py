@@ -136,3 +136,19 @@ def test_batch_handle_owns_thread_and_close_is_idempotent(qt_app):
     assert service.state is AcquisitionState.IDLE
     assert service.close(timeout_s=1.0) is True
     assert service.close(timeout_s=1.0) is True
+
+
+def test_measurement_widget_stop_all_activities_delegates_to_service():
+    calls = []
+    fake = type("Widget", (), {})()
+    fake.is_kinetics_monitoring = False
+    fake.is_acquiring = True
+    fake.acquisition_service = type(
+        "Service", (), {"close": lambda self, timeout_s=0.5: calls.append(timeout_s)}
+    )()
+    fake._refresh_raman_workflow = lambda: None
+
+    from nanosense.gui.measurement_widget import MeasurementWidget
+
+    MeasurementWidget.stop_all_activities(fake)
+    assert calls == [0.5]

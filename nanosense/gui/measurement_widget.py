@@ -47,6 +47,7 @@ from nanosense.utils.file_io import save_spectrum, load_spectrum, save_all_spect
 from nanosense.utils.config_manager import load_settings
 from nanosense.utils.plot_theme import apply_plot_theme, get_plot_theme, set_plot_legend_visible
 from nanosense.core.spectrum_processor import SpectrumProcessor
+from nanosense.core.acquisition import AcquisitionService, AcquisitionState
 
 class MeasurementWidget(QWidget):
     kinetics_data_updated = pyqtSignal(dict)
@@ -63,8 +64,6 @@ class MeasurementWidget(QWidget):
         self.data_queue = queue.Queue(maxsize=10)
         self.background_reference_average_count = 10
         self.recent_signal_frames = deque(maxlen=self.background_reference_average_count)
-        self.stop_event = threading.Event()
-        self.acquisition_thread = None
         self.acquisition_error_backoff_s = 0.05
         self.acquisition_idle_sleep_s = 0.1
         self._last_acquisition_error_message = None
@@ -85,6 +84,17 @@ class MeasurementWidget(QWidget):
         self.raman_workflow_saved = False
         self.last_result_processing_time = None
         self.result_processing_interval_s = REALTIME_RESULT_UPDATE_INTERVAL_S
+        self.acquisition_service = AcquisitionService(self.controller, parent=self)
+        self.acquisition_service.spectrum_ready.connect(
+            self._on_service_spectrum_ready
+        )
+        self.acquisition_service.state_changed.connect(
+            self._on_acquisition_state_changed
+        )
+        self.acquisition_service.error_occurred.connect(
+            self._on_acquisition_error
+        )
+        self.acquisition_service.finished.connect(self._on_acquisition_finished)
 
         # --- 用于存储所有弹出的独立窗口 ---
         self.popout_windows = []
@@ -1575,44 +1585,59 @@ class MeasurementWidget(QWidget):
 
     def _toggle_acquisition(self, start):
         """根据明确的布尔参数开始或停止采集。"""
-        if start == self.is_acquiring:
+        if start and self.is_acquiring:
+            return
+        if not start and not self.is_acquiring and not self.acquisition_service.is_running:
             return
 
         if start:
-            self.is_acquiring = True
+            if not self.acquisition_service.start():
+                return
             self.last_result_processing_time = None
-            self.toggle_acq_button.setText(self.tr("Stop Acquisition"))
-
-            if hasattr(self, 'acquisition_thread') and self.acquisition_thread and self.acquisition_thread.is_alive():
-                self.stop_event.set()
-                self.acquisition_thread.join(timeout=0.5)
-
-            self.stop_event.clear()
-            self.acquisition_thread = threading.Thread(target=self.acquisition_thread_func)
-            self.acquisition_thread.daemon = True
-            self.acquisition_thread.start()
 
             if not hasattr(self, 'update_timer'):
                 self.update_timer = QTimer(self)
                 self.update_timer.setInterval(50)
                 self.update_timer.timeout.connect(self.update_plot)
             self.update_timer.start()
-            print(self.tr("Acquisition thread has started."))
 
         else:
-            self.is_acquiring = False
-            self.toggle_acq_button.setText(self.tr("Start Acquisition"))
-
             if hasattr(self, 'update_timer'):
                 self.update_timer.stop()
-            if hasattr(self, 'stop_event'):
-                self.stop_event.set()
-
-            if hasattr(self, 'acquisition_thread') and self.acquisition_thread and self.acquisition_thread.is_alive():
-                self.acquisition_thread.join(timeout=0.5)
-
-            print(self.tr("Acquisition thread has stopped."))
+            self.acquisition_service.stop(timeout_s=0.5)
         self._refresh_raman_workflow()
+
+    def _on_service_spectrum_ready(self, wavelengths, spectrum):
+        if self.data_queue.full():
+            try:
+                self.data_queue.get_nowait()
+            except queue.Empty:
+                pass
+        self.data_queue.put(np.asarray(spectrum))
+
+    def _on_acquisition_state_changed(self, state):
+        self.is_acquiring = state in (
+            AcquisitionState.CONNECTING,
+            AcquisitionState.READY,
+            AcquisitionState.ACQUIRING,
+            AcquisitionState.STOPPING,
+        )
+        if hasattr(self, "toggle_acq_button"):
+            self.toggle_acq_button.setChecked(self.is_acquiring)
+            self.toggle_acq_button.setText(
+                self.tr("Stop Acquisition")
+                if self.is_acquiring
+                else self.tr("Start Acquisition")
+            )
+        self._refresh_raman_workflow()
+
+    def _on_acquisition_error(self, message):
+        self._last_acquisition_error_message = message
+        print(self.tr("Acquisition error: {0}").format(message))
+
+    def _on_acquisition_finished(self):
+        if hasattr(self, "update_timer") and not self.is_acquiring:
+            self.update_timer.stop()
 
     def _on_integration_time_changed(self, value):
         if self.controller:
@@ -1631,39 +1656,27 @@ class MeasurementWidget(QWidget):
             self.controller.set_scans_to_average(self.scans_to_average_spinbox.value())
 
     def acquisition_thread_func(self):
-        while not self.stop_event.is_set():
-            if self.controller and self.is_acquiring:
-                try:
-                    _, spectrum = self.controller.get_spectrum()
-                except Exception as exc:
-                    message = str(exc)
-                    repeat_count = getattr(self, '_acquisition_error_repeat_count', 0) + 1
-                    self._acquisition_error_repeat_count = repeat_count
-                    if (
-                        message != getattr(self, '_last_acquisition_error_message', None)
-                        or repeat_count == 1
-                        or repeat_count % 50 == 0
-                    ):
-                        print(self.tr("Acquisition error: {0}").format(message))
-                    self._last_acquisition_error_message = message
-                    time.sleep(getattr(self, 'acquisition_error_backoff_s', 0.05))
-                    continue
-
-                self._last_acquisition_error_message = None
-                self._acquisition_error_repeat_count = 0
-                if not self.data_queue.full():
-                    self.data_queue.put(np.array(spectrum))
-            else:
-                time.sleep(getattr(self, 'acquisition_idle_sleep_s', 0.1))
+        service = getattr(self, "acquisition_service", None)
+        stop_event = getattr(
+            self,
+            "stop_event",
+            getattr(service, "_stop_event", threading.Event()),
+        )
+        AcquisitionService.run_compat_loop(
+            controller=self.controller,
+            stop_event=stop_event,
+            is_active=lambda: self.is_acquiring,
+            emit=lambda spectrum: self.data_queue.put(np.asarray(spectrum)),
+            error_backoff_s=getattr(self, "acquisition_error_backoff_s", 0.05),
+            idle_sleep_s=getattr(self, "acquisition_idle_sleep_s", 0.1),
+        )
 
     def stop_all_activities(self):
         if self.is_kinetics_monitoring:
             self._toggle_kinetics_window()
-        if self.is_acquiring:
-            self._toggle_acquisition(False)
-        self.stop_event.set()
-        if self.acquisition_thread and self.acquisition_thread.is_alive():
-            self.acquisition_thread.join(timeout=0.5)
+        if hasattr(self, "acquisition_service"):
+            self.acquisition_service.close(timeout_s=0.5)
+        self.is_acquiring = False
 
     def _load_spectrum_data_for_comparison(self):
         default_load_path = self.app_settings.get('default_load_path', '')
