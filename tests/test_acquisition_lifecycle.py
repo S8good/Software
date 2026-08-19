@@ -1,17 +1,21 @@
+import os
 import threading
 import time
 from pathlib import Path
 
 import numpy as np
 import pytest
-from PyQt5.QtCore import QCoreApplication, QObject, pyqtSignal, pyqtSlot
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt5.QtWidgets import QApplication
 
 from nanosense.core.acquisition import AcquisitionService, AcquisitionState
 
 
 @pytest.fixture(scope="session")
 def qt_app():
-    app = QCoreApplication.instance() or QCoreApplication([])
+    app = QApplication.instance() or QApplication([])
     return app
 
 
@@ -33,16 +37,29 @@ class _FatalController:
         raise RuntimeError("device disconnected")
 
 
+class _BlockingController:
+    wavelengths = np.array([500.0, 600.0, 700.0])
+
+    def __init__(self):
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def get_spectrum(self):
+        self.entered.set()
+        self.release.wait(1.0)
+        return self.wavelengths, np.array([1.0, 2.0, 3.0])
+
+
 def _wait_until(predicate, timeout=1.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        app = QCoreApplication.instance()
+        app = QApplication.instance()
         if app is not None:
             app.processEvents()
         if predicate():
             return True
         time.sleep(0.005)
-    app = QCoreApplication.instance()
+    app = QApplication.instance()
     if app is not None:
         app.processEvents()
     return predicate()
@@ -92,6 +109,26 @@ def test_fatal_device_errors_reach_error_state(qt_app):
     assert errors == ["device disconnected"]
     assert service.stop(timeout_s=1.0) is True
     service.close(timeout_s=1.0)
+
+
+def test_close_releases_once_and_not_before_a_timeout_is_recovered(qt_app):
+    controller = _BlockingController()
+    released = []
+    service = AcquisitionService(
+        controller,
+        poll_interval_s=0.0,
+        release_callback=lambda: released.append(True),
+    )
+    assert service.start() is True
+    assert _wait_until(controller.entered.is_set)
+    assert service.stop(timeout_s=0.01) is False
+    assert released == []
+
+    controller.release.set()
+    assert service.stop(timeout_s=1.0) is True
+    assert service.close(timeout_s=1.0) is True
+    assert service.close(timeout_s=1.0) is True
+    assert released == [True]
 
 
 def test_one_hundred_start_stop_cycles_leave_no_thread(qt_app):

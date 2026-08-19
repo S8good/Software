@@ -41,6 +41,7 @@ class AcquisitionService(QObject):
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
         self._closed = False
+        self._released = False
         self._batch_handle = None
 
     @property
@@ -87,9 +88,9 @@ class AcquisitionService(QObject):
                 daemon=True,
             )
             thread = self._thread
-            thread.start()
             self._set_state(AcquisitionState.READY)
             self._set_state(AcquisitionState.ACQUIRING)
+            thread.start()
             return True
 
     def _run(self):
@@ -162,7 +163,10 @@ class AcquisitionService(QObject):
         stopped = self.stop(timeout_s)
         with self._lock:
             self._closed = True
-        if self.release_callback is not None:
+            should_release = stopped and not self._released
+            if should_release:
+                self._released = True
+        if self.release_callback is not None and should_release:
             self.release_callback()
         return stopped
 
