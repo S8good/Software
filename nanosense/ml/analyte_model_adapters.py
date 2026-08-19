@@ -86,7 +86,7 @@ class UnavailableModelAdapter(AnalyteModelAdapter):
         return AdapterHealth(
             ok=False,
             code="model_not_implemented",
-            message="No prediction model has been supplied for %s." % self.display_name,
+            message="Prediction model not supplied for %s." % self.display_name,
             details={"analyte_id": self.analyte_id},
         )
 
