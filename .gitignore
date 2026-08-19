@@ -33,6 +33,7 @@ env/
 # IDE and operating-system state
 .idea/
 .vscode/
+.worktrees/
 .DS_Store
 Thumbs.db
 
