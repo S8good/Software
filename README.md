@@ -335,6 +335,14 @@ LSPR AI 工作台相关配置当前至少包括：
 - `lspr_default_artifact_dir`
 - `lspr_batch_export_dir`
 
+LSPR Master 根目录按以下顺序解析：
+
+1. 设置页中的 `lspr_master_root`（显式配置）
+2. 环境变量 `LSPR_MASTER_ROOT`
+3. 软件目录附近的 `LSPR_Spectra_Master` 或 `DeepLearning/LSPR_Spectra_Master`
+
+留空 `lspr_master_root` 可启用环境变量和相邻目录探测。`lspr_subprocess_python` 留空时使用当前 Python 解释器；设置页的 `Test LSPR Connection` 会在保存前执行健康检查，并报告解析到的根目录、runner 和缺失文件。
+
 如果使用真实硬件：
 
 - 需要确保厂商 DLL 可被加载

@@ -106,6 +106,9 @@
 推荐配置：
 
 - `lspr_backend_mode = auto`
-- `lspr_master_root` 指向 `DeepLearning/LSPR_Spectra_Master`
+- `lspr_master_root` 可显式指向 `LSPR_Spectra_Master` 根目录
+- `lspr_subprocess_python` 可指定运行 bridge runner 的 Python 解释器；留空时使用当前解释器
+
+根目录解析优先级为：显式 `lspr_master_root`、环境变量 `LSPR_MASTER_ROOT`、软件目录附近的相邻目录。设置页中的 `Test LSPR Connection` 不会保存配置，只会执行健康检查并显示实际解析路径。若检查失败，详情中会列出候选目录、runner 路径、解释器和缺失的模型文件，便于修复部署问题。
 
 在当前工作站环境中，`auto` 往往会自动回退到 `subprocess`。只要预测和图形结果正常，这属于预期行为。

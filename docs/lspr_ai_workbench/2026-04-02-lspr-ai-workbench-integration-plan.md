@@ -37,67 +37,67 @@
 
 ### 主软件侧需要修改的文件
 
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/menu_bar.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/menu_bar.py`
   - 增加 `LSPR AI Workbench...` 菜单项，并清理与已删除旧 CNN 原型入口有关的遗留命名。
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/main_window.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/main_window.py`
   - 连接菜单入口，启动工作台，接收测量页和数据库浏览器传来的光谱，并维护窗口引用。
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/settings_dialog.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/settings_dialog.py`
   - 增加 `LSPR_Spectra_Master` 根目录、模型默认项、制品路径和环境模式等设置项。
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/utils/config_manager.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/utils/config_manager.py`
   - 为 LSPR AI 工作台增加持久化默认配置。
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/core/database_manager.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/core/database_manager.py`
   - 增加 AI 分析结果和相关附件的存储辅助方法。
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/core/data_access.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/core/data_access.py`
   - 向数据库浏览器暴露 LSPR AI 归档结果。
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/database_explorer.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/database_explorer.py`
   - 增加从归档结果或光谱集合直接进入工作台的入口。
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/README.md`
+- 修改：`<workspace-root>/25.10.23 - 测试/README.md`
   - 补充工作台说明，删除过时的深度学习旧描述。
 
 ### 主软件侧需要新建的文件
 
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_backend_protocol.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_backend_protocol.py`
   - 定义 JSON 兼容的请求 / 响应协议和后端接口约束。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_backend_factory.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_backend_factory.py`
   - 根据配置选择 `inprocess`、`subprocess` 或 `auto` 模式。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_master_bridge.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_master_bridge.py`
   - 对 `LSPR_Spectra_Master` 的导入、模型加载、路径解析和环境诊断做兼容封装。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_inprocess_backend.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_inprocess_backend.py`
   - 同进程执行后端。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_subprocess_backend.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_subprocess_backend.py`
   - 子进程执行后端，负责 JSON 序列化、超时控制、错误转换和 runner 调用。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
   - 向 GUI 暴露稳定的应用级接口，输出规范化结果结构。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
   - 工作台主窗口，多标签页容器。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_single_prediction_widget.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_single_prediction_widget.py`
   - 单谱导入、预测和摘要显示。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_spectrum_comparison_widget.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_spectrum_comparison_widget.py`
   - 输入谱和生成谱的多曲线对比可视化。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_digital_twin_widget.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_digital_twin_widget.py`
   - 数字孪生标签页，包括浓度滑块、物理特征和物理 / AI 光谱图。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_model_comparison_widget.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_model_comparison_widget.py`
   - 多模型结果比较。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_batch_prediction_dialog.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_batch_prediction_dialog.py`
   - 批量导入、结果表格、导出与归档。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_result_summary_widget.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_result_summary_widget.py`
   - 复用的结果摘要面板。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_service.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_service.py`
   - 服务层测试。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_master_bridge.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_master_bridge.py`
   - 桥接层和路径解析测试。
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_workbench_plan_smoke.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_workbench_plan_smoke.py`
   - 菜单、配置和基本工作台连通性的冒烟测试。
 
 ### `LSPR_Spectra_Master` 侧需要重点查看或适配的文件
 
-- 查看 / 可能修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/DeepLearning/LSPR_Spectra_Master/src/core/ai_engine.py`
+- 查看 / 可能修改：`<workspace-root>/DeepLearning/LSPR_Spectra_Master/src/core/ai_engine.py`
   - 优先保持其可导入和稳定，不要复制核心推理逻辑。
-- 查看 / 可能修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/DeepLearning/LSPR_Spectra_Master/src/core/digital_twin_service.py`
+- 查看 / 可能修改：`<workspace-root>/DeepLearning/LSPR_Spectra_Master/src/core/digital_twin_service.py`
   - 复用其图形上下文和物理特征生成逻辑。
-- 新建 / 可能修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/DeepLearning/LSPR_Spectra_Master/scripts/lspr_bridge_runner.py`
+- 新建 / 可能修改：`<workspace-root>/DeepLearning/LSPR_Spectra_Master/scripts/lspr_bridge_runner.py`
   - 提供最小子进程 runner，至少支持 `health` 和 `predict_single` 命令。
-- 查看 / 可能修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/DeepLearning/LSPR_Spectra_Master/models/pretrained/*`
+- 查看 / 可能修改：`<workspace-root>/DeepLearning/LSPR_Spectra_Master/models/pretrained/*`
   - 统一模型制品发现逻辑和缺失报错。
 
 ---
@@ -168,15 +168,15 @@ AI 结果应作为结构化分析运行归档，不建议单独发明一套平�
 ## 任务 1：建立协议层、桥接层和双后端执行骨架
 
 **文件：**
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_backend_protocol.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_backend_factory.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_master_bridge.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_inprocess_backend.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_subprocess_backend.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_master_bridge.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_service.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/DeepLearning/LSPR_Spectra_Master/scripts/lspr_bridge_runner.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_backend_protocol.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_backend_factory.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_master_bridge.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_inprocess_backend.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_subprocess_backend.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_master_bridge.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_service.py`
+- 新建：`<workspace-root>/DeepLearning/LSPR_Spectra_Master/scripts/lspr_bridge_runner.py`
 
 - [ ] 先定义统一协议，所有请求和响应都必须是 JSON 兼容结构：
   - `PredictSingleRequest`
@@ -260,9 +260,9 @@ git commit -m "feat: add LSPR protocol and dual-backend execution layer"
 ## 任务 2：增加配置与设置支持
 
 **文件：**
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/utils/config_manager.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/settings_dialog.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_workbench_plan_smoke.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/utils/config_manager.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/settings_dialog.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_workbench_plan_smoke.py`
 
 - [ ] 增加默认配置项：
   - `lspr_master_root`
@@ -305,12 +305,12 @@ git commit -m "feat: add LSPR AI workbench settings"
 ## 任务 3：实现单谱预测与谱线对比标签页
 
 **文件：**
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_single_prediction_widget.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_spectrum_comparison_widget.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_result_summary_widget.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/menu_bar.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/main_window.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_single_prediction_widget.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_spectrum_comparison_widget.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_result_summary_widget.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/menu_bar.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/main_window.py`
 
 - [ ] 先写失败测试或冒烟断言，覆盖：
   - 菜单中出现 `LSPR AI Workbench...`
@@ -359,10 +359,10 @@ git commit -m "feat: add LSPR AI workbench single-spectrum flow"
 ## 任务 4：实现数字孪生标签页
 
 **文件：**
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_digital_twin_widget.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
-- 测试：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_service.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_digital_twin_widget.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
+- 测试：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_service.py`
 
 - [ ] 先写失败测试，验证数字孪生服务输出包含：
   - 波长轴
@@ -402,11 +402,11 @@ git commit -m "feat: add LSPR digital twin visualization tab"
 ## 任务 5：增加多模型比较流程
 
 **文件：**
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_model_comparison_widget.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_master_bridge.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
-- 测试：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_service.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_model_comparison_widget.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_master_bridge.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
+- 测试：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_service.py`
 
 - [ ] 定义支持的模型注册表：
   - v1 predictor
@@ -446,10 +446,10 @@ git commit -m "feat: add LSPR model comparison workflow"
 ## 任务 6：实现批量预测
 
 **文件：**
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_batch_prediction_dialog.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
-- 测试：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_service.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_batch_prediction_dialog.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/ml/lspr_ai_service.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
+- 测试：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_service.py`
 
 - [ ] 先写失败测试，验证：
   - 文件夹输入能返回多行结果
@@ -496,10 +496,10 @@ git commit -m "feat: add LSPR batch prediction workflow"
 ## 任务 7：将 AI 结果归档到数据库
 
 **文件：**
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/core/database_manager.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/core/data_access.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/database_explorer.py`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_database.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/core/database_manager.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/core/data_access.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/database_explorer.py`
+- 新建：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_database.py`
 
 - [ ] 先写失败测试，验证：
   - LSPR AI 结果可存为 analysis run
@@ -539,10 +539,10 @@ git commit -m "feat: archive LSPR AI results in database"
 ## 任务 8：与测量和导入流程联动
 
 **文件：**
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/measurement_widget.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/main_window.py`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
-- 测试：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/tests/test_lspr_ai_workbench_plan_smoke.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/measurement_widget.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/main_window.py`
+- 修改：`<workspace-root>/25.10.23 - 测试/nanosense/gui/lspr_ai_workbench.py`
+- 测试：`<workspace-root>/25.10.23 - 测试/tests/test_lspr_ai_workbench_plan_smoke.py`
 
 - [ ] 先写失败测试，验证：
   - 测量页可发送当前结果谱
@@ -581,9 +581,9 @@ git commit -m "feat: connect workbench to measurement flow"
 ## 任务 9：文档、打磨与端到端验证
 
 **文件：**
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/README.md`
-- 新建：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/docs/lspr_ai_workbench/lspr-ai-workbench-user-guide.md`
-- 修改：`C:/Users/Spc/Desktop/3.LSPR-code/LSPR_code/25.10.23 - 测试/docs/ui/database_explorer_demo.md`
+- 修改：`<workspace-root>/25.10.23 - 测试/README.md`
+- 新建：`<workspace-root>/25.10.23 - 测试/docs/lspr_ai_workbench/lspr-ai-workbench-user-guide.md`
+- 修改：`<workspace-root>/25.10.23 - 测试/docs/ui/database_explorer_demo.md`
 
 - [ ] 更新 README，说明：
   - 工作台能力范围
