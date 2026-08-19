@@ -16,6 +16,10 @@ from .snapshot_utils import (
     serialize_payload,
 )
 from typing import Any, Dict, List, Optional, Tuple
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def _merge_nested_dict(target: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
@@ -71,15 +75,15 @@ class DatabaseManager:
             self._run_pending_migrations()
             self._create_compatibility_views()
             self._init_complete = True
-            print(f"数据库已连接并初始化: {db_path}")
+            logger.info("database_initialized event=database_initialized")
 
     def _connect(self):
         try:
             db_dir = os.path.dirname(self.db_path)
             os.makedirs(db_dir, exist_ok=True)
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        except Exception as e:
-            print(f"数据库连接失败: {e}")
+        except Exception:
+            logger.exception("database_connect_failed event=database_connect_failed")
 
     def _create_tables(self):
         """【重大修改】重新定义数据库结构，增加项目、分析结果等表。"""
@@ -190,11 +194,11 @@ class DatabaseManager:
 
         except sqlite3.OperationalError as e:
             if "no such table" in str(e):
-                print("兼容视图创建被跳过，等待迁移完成后重新初始化。")
+                logger.warning("compatibility_views_deferred event=compatibility_views_deferred")
             else:
-                print(f"创建兼容视图失败: {e}")
-        except Exception as e:
-            print(f"创建兼容视图失败: {e}")
+                logger.exception("compatibility_views_failed event=compatibility_views_failed")
+        except Exception:
+            logger.exception("compatibility_views_failed event=compatibility_views_failed")
 
     def _run_pending_migrations(self):
         if not self.conn:
@@ -202,13 +206,13 @@ class DatabaseManager:
 
         try:
             run_migrations(self.conn, logger=self._log_migration)
-        except Exception as e:
-            print(f"数据库迁移失败: {e}")
+        except Exception:
+            logger.exception("database_migration_failed event=database_migration_failed")
             raise
 
     @staticmethod
     def _log_migration(message):
-        print(f"[Database] {message}")
+        logger.info("database_migration event=database_migration message=%s", message)
 
     def _fetch_structured_spectra(self, experiment_id: int) -> Optional[List[Dict[str, Any]]]:
         if not self.conn:

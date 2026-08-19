@@ -1,6 +1,12 @@
 import sys
 import os
+import logging
 from pathlib import Path
+
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class FX2000Controller:
@@ -53,13 +59,13 @@ class FX2000Controller:
         """
         if self.is_real_hardware and self.in_endpoint:
             try:
-                print(f"正在中止端点 {hex(self.in_endpoint.Address)} 的数据管道...")
+                logger.info("abort_endpoint event=abort_endpoint address=%s", hex(self.in_endpoint.Address))
                 self.in_endpoint.Abort()
-                print("数据管道已中止。")
-            except Exception as e:
-                print(f"中止数据管道时发生错误: {e}")
+                logger.info("abort_endpoint_complete event=abort_endpoint_complete")
+            except Exception:
+                logger.exception("abort_endpoint_failed event=abort_endpoint_failed")
         else:
-            print("模拟模式或未找到输入端点，无需中止管道。")
+            logger.debug("abort_endpoint_skipped event=abort_endpoint_skipped")
 
     @classmethod
     def connect(cls, use_real_hardware=True, device_index=0, hardware_vendor=None):
@@ -73,7 +79,11 @@ class FX2000Controller:
         """
         if cls._instance is None:
             vendor = (hardware_vendor or ('ideaoptics' if use_real_hardware else 'mock')).lower()
-            print(f"首次连接，模式: {'真实硬件' if use_real_hardware else '模拟API'} (vendor={vendor})")
+            logger.info(
+                "controller_connect_started event=controller_connect_started mode=%s vendor=%s",
+                "real" if use_real_hardware else "mock",
+                vendor,
+            )
 
             Wrapper = None
             if use_real_hardware:
@@ -84,9 +94,12 @@ class FX2000Controller:
                         if str(project_root) not in sys.path:
                             sys.path.insert(0, str(project_root))
                         from ocean_direct_api import Wrapper
-                        print("已成功加载真实硬件驱动: OceanDirect SDK")
-                    except Exception as e:
-                        print(f"加载 OceanDirect 驱动失败: {e}，将回退到模拟模式。")
+                        logger.info("driver_loaded event=driver_loaded vendor=ocean")
+                    except Exception:
+                        logger.warning(
+                            "driver_load_failed event=driver_load_failed vendor=ocean fallback=mock",
+                            exc_info=True,
+                        )
                         from mock_spectrometer_api import Wrapper
                         use_real_hardware = False
                         vendor = 'mock'
@@ -101,15 +114,18 @@ class FX2000Controller:
 
                         clr.AddReference(str(driver_path / "IdeaOptics"))
                         from IdeaOptics import Wrapper
-                        print("已成功加载真实硬件驱动: IdeaOptics.dll")
-                    except Exception as e:
-                        print(f"加载真实硬件驱动失败: {e}，将回退到模拟模式。")
+                        logger.info("driver_loaded event=driver_loaded vendor=ideaoptics")
+                    except Exception:
+                        logger.warning(
+                            "driver_load_failed event=driver_load_failed vendor=ideaoptics fallback=mock",
+                            exc_info=True,
+                        )
                         from mock_spectrometer_api import Wrapper
                         use_real_hardware = False  # 强制切换模式
                         vendor = 'mock'
             else:
                 from mock_spectrometer_api import Wrapper
-                print("当前为模拟硬件模式。")
+                logger.info("mock_driver_selected event=mock_driver_selected")
                 vendor = 'mock'
 
             try:
@@ -117,14 +133,17 @@ class FX2000Controller:
                 device_count = api_wrapper.OpenAllSpectrometers()
 
                 if device_count == 0 and use_real_hardware:
-                    print("未能找到任何光谱仪设备。请检查USB连接。")
+                    logger.error("device_not_found event=device_not_found")
                     return None
 
                 cls(api_wrapper, use_real_hardware, device_index, hardware_vendor=vendor)
-                print(f"已连接到设备: {cls._instance.name} (SN: {cls._instance.serial_number})")
+                logger.info(
+                    "controller_connected event=controller_connected device=%s",
+                    cls._instance.name,
+                )
 
-            except Exception as e:
-                print(f"硬件连接过程中发生错误: {e}")
+            except Exception:
+                logger.exception("controller_connect_failed event=controller_connect_failed")
                 cls._instance = None
 
         return cls._instance
@@ -140,12 +159,12 @@ class FX2000Controller:
                 if cls._instance.is_real_hardware and hasattr(cls._instance.api_wrapper, 'closeAllSpectrometers'):
                     # 尝试调用底层的关闭方法（仅对真实硬件）
                     cls._instance.api_wrapper.closeAllSpectrometers()
-            except Exception as e:
-                print(f"关闭硬件时出错: {e}")
+            except Exception:
+                logger.exception("controller_disconnect_failed event=controller_disconnect_failed")
             finally:
                 # 【核心】清空已缓存的实例，确保下次connect()可以重新创建
                 cls._instance = None
-                print("FX2000Controller 实例已重置。")
+                logger.info("controller_disconnected event=controller_disconnected")
 
     @property
     def name(self):
@@ -170,31 +189,31 @@ class FX2000Controller:
         if hasattr(self.api_wrapper, 'setScansToAverage'):
             self.api_wrapper.setScansToAverage(self.device_index, num_scans)
         else:
-            print("警告：当前API不支持设置平均扫描次数。")
+            logger.warning("scans_average_unsupported event=scans_average_unsupported")
 
     def set_excitation_wavelength(self, wavelength: float):
         """【预留】设置激发波长。"""
         if hasattr(self.api_wrapper, 'setExcitationWavelength'):
             self.api_wrapper.setExcitationWavelength(self.device_index, wavelength)
-            print(f"已设置激发波长: {wavelength} nm")
+            logger.info("excitation_wavelength_set event=excitation_wavelength_set")
         else:
-            print(f"警告：当前API不支持设置激发波长。已记录波长值: {wavelength} nm")
+            logger.warning("excitation_wavelength_unsupported event=excitation_wavelength_unsupported")
 
     def set_laser_power(self, power_percent: float):
         """【预留】设置激光功率。"""
         if hasattr(self.api_wrapper, 'setLaserPower'):
             self.api_wrapper.setLaserPower(self.device_index, power_percent)
-            print(f"已设置激光功率: {power_percent}%")
+            logger.info("laser_power_set event=laser_power_set")
         else:
-            print(f"警告：当前API不支持设置激光功率。已记录功率值: {power_percent}%")
+            logger.warning("laser_power_unsupported event=laser_power_unsupported")
 
     def set_laser_state(self, enabled: bool):
         """【预留】设置激光开关状态。"""
         if hasattr(self.api_wrapper, 'setLaserState'):
             self.api_wrapper.setLaserState(self.device_index, enabled)
-            print(f"已{'开启' if enabled else '关闭'}激光")
+            logger.info("laser_state_set event=laser_state_set enabled=%s", enabled)
         else:
-            print(f"警告：当前API不支持控制激光状态。已记录状态: {'开启' if enabled else '关闭'}")
+            logger.warning("laser_state_unsupported event=laser_state_unsupported")
 
     def get_spectrum(self):
         """【已修正】获取一条光谱数据，确保返回值为Numpy数组。"""

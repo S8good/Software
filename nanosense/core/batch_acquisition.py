@@ -31,6 +31,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread, Qt, QEvent, QSize
 
 from ..utils.qt_safe import SafeEmitMixin
+from ..utils.logging_config import get_logger, logging_context, new_correlation_id
 from PyQt5.QtGui import QColor, QIcon, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 from collections import defaultdict
@@ -46,6 +47,9 @@ from .batch_preview import (
 from ..utils.file_io import save_batch_spectrum_data, load_spectrum_from_path
 from ..gui.single_plot_window import SinglePlotWindow
 from ..utils.plot_theme import apply_plot_theme, get_plot_theme
+
+
+logger = get_logger(__name__)
 
 PROGRESS_BAR_STYLE = """
 QProgressBar {
@@ -1143,6 +1147,8 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
         # Initialize worker state
         self._is_running = True
         self.run_status = "pending"
+        self.correlation_id = None
+        self.session_id = "-"
         self.command_queue = queue.Queue(maxsize=1)
         self.tasks = []
         self.task_index = 0
@@ -1222,10 +1228,14 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
         if 'peak_method' in new_settings:
             self.peak_method = new_settings['peak_method']
         
-        print(f"Processing settings updated:")
-        print(f"  - Smoothing: {new_settings.get('smoothing_method', 'N/A')} (window={new_settings.get('smoothing_window', 'N/A')})")
-        print(f"  - Baseline: {new_settings.get('baseline_algorithm', 'N/A')} (enabled={new_settings.get('baseline_enabled', False)})")
-        print(f"  - Peak: {new_settings.get('peak_method', 'N/A')}")
+        logger.info(
+            "batch_processing_settings_updated event=batch_processing_settings_updated "
+            "smoothing=%s baseline=%s peak=%s",
+            new_settings.get("smoothing_method", "N/A"),
+            new_settings.get("baseline_algorithm", "N/A"),
+            new_settings.get("peak_method", "N/A"),
+            extra={"session_id": self.session_id, "correlation_id": self.correlation_id or "-"},
+        )
     
     def _apply_preprocessing(self, absorbance, wavelengths):
         """根据processing_settings应用预处理"""
@@ -1243,6 +1253,10 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
 
     def stop(self):
         self._is_running = False
+        logger.info(
+            "batch_stop_requested event=batch_stop_requested",
+            extra={"session_id": self.session_id, "correlation_id": self.correlation_id or "-"},
+        )
         if self.command_queue.empty():
             self.command_queue.put(("STOP", None))
         if self.controller:
@@ -1603,6 +1617,10 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
 
     def run(self):
         self.run_status = "in_progress"
+        logger.info(
+            "batch_worker_started event=batch_worker_started",
+            extra={"session_id": self.session_id, "correlation_id": self.correlation_id or "-"},
+        )
         try:
             folder_timestamp = time.strftime("%Y%m%d-%H%M%S")
             run_output_folder = os.path.join(
@@ -1929,10 +1947,17 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
                             df_peak_results.to_excel(peak_results_output_path, index=False, engine="openpyxl")
             except Exception as exc:
                 self.run_status = "failed"
-                print(f"Failed to generate batch summary file: {exc}")
+                logger.exception(
+                    "batch_summary_failed event=batch_summary_failed",
+                    extra={"session_id": self.session_id, "correlation_id": self.correlation_id or "-"},
+                )
                 self._safe_emit(self.error, f"Failed to generate final summary file: {exc}")
         except Exception as exc:
             self.run_status = "failed"
+            logger.exception(
+                "batch_worker_failed event=batch_worker_failed",
+                extra={"session_id": self.session_id, "correlation_id": self.correlation_id or "-"},
+            )
             self._safe_emit(self.error, str(exc))
         finally:
             if self.run_status == "pending":
@@ -1942,5 +1967,10 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
             except RuntimeError:
                 pass
             self._is_running = False
+            logger.info(
+                "batch_worker_finished event=batch_worker_finished status=%s",
+                self.run_status,
+                extra={"session_id": self.session_id, "correlation_id": self.correlation_id or "-"},
+            )
             self._safe_emit(self.finished)
 

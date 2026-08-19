@@ -134,3 +134,18 @@ def test_lspr_logs_have_correlation_context(caplog):
     assert records
     assert any(record.correlation_id != "-" for record in records)
     assert any("lspr_started" in record.getMessage() for record in records)
+
+
+def test_critical_modules_define_module_loggers():
+    for path in (
+        "nanosense/core/controller.py",
+        "nanosense/core/batch_acquisition.py",
+        "nanosense/core/database_manager.py",
+    ):
+        source = open(path, encoding="utf-8").read()
+        assert "get_logger(__name__)" in source
+
+
+def test_readme_documents_log_location():
+    source = open("README.md", encoding="utf-8").read()
+    assert "logs/nanosense.log" in source

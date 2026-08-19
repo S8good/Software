@@ -247,6 +247,8 @@ class AcquisitionService(QObject):
                 return self._batch_handle
             self._session_id = current_context()["session_id"]
             self._correlation_id = new_correlation_id("batch")
+            setattr(worker, "correlation_id", self._correlation_id)
+            setattr(worker, "session_id", self._session_id)
             with logging_context(
                 session_id=self._session_id,
                 correlation_id=self._correlation_id,

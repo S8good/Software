@@ -520,3 +520,9 @@ pytest tests
 - 操作手册
 - 批量采集 SOP
 - 数据库结构说明书
+
+### Runtime Logs
+
+The application writes diagnostic logs to `logs/nanosense.log` with rotating backups.
+Each record includes a session identifier and, for background work, a correlation identifier.
+Logs contain task metadata and error tracebacks but do not include complete spectra or secrets.
