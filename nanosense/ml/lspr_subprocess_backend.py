@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -19,7 +20,12 @@ from .lspr_backend_protocol import (
     LSPRBackend,
     PredictSingleRequest,
     PredictionResponse,
+    ERROR_EXTERNAL_PROCESS,
+    ERROR_REQUEST_TIMEOUT,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class SubprocessLSPRBackend(LSPRBackend):
@@ -54,19 +60,52 @@ class SubprocessLSPRBackend(LSPRBackend):
                 'ok': False,
                 'backend': 'subprocess',
                 'details': details,
-                'error': {'code': 'runner_missing', 'message': 'subprocess runner does not exist'},
+                'error': {
+                    'code': ERROR_EXTERNAL_PROCESS,
+                    'message': 'subprocess runner does not exist',
+                    'details': details,
+                },
             }
         env = self._build_subprocess_env()
-        proc = subprocess.run(
-            [self.python_executable, str(runner_path), command],
-            input=json.dumps(payload, ensure_ascii=False),
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            timeout=self.timeout_seconds,
-            check=False,
-            env=env,
-        )
+        try:
+            proc = subprocess.run(
+                [self.python_executable, str(runner_path), command],
+                input=json.dumps(payload, ensure_ascii=False),
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                timeout=self.timeout_seconds,
+                check=False,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            details = self._runner_diagnostics()
+            details.update({'command': command, 'timeout_seconds': self.timeout_seconds})
+            logger.exception("LSPR subprocess timed out")
+            return {
+                'ok': False,
+                'backend': 'subprocess',
+                'details': details,
+                'error': {
+                    'code': ERROR_REQUEST_TIMEOUT,
+                    'message': 'subprocess request timed out',
+                    'details': details,
+                },
+            }
+        except OSError as exc:
+            details = self._runner_diagnostics()
+            details.update({'command': command, 'exception_type': type(exc).__name__})
+            logger.exception("LSPR subprocess could not start")
+            return {
+                'ok': False,
+                'backend': 'subprocess',
+                'details': details,
+                'error': {
+                    'code': ERROR_EXTERNAL_PROCESS,
+                    'message': 'subprocess could not be started',
+                    'details': details,
+                },
+            }
         if proc.returncode != 0:
             details = {
                 'command': command,
@@ -78,7 +117,11 @@ class SubprocessLSPRBackend(LSPRBackend):
                 'ok': False,
                 'backend': 'subprocess',
                 'details': details,
-                'error': {'code': 'runner_failed', 'message': proc.stderr.strip() or 'subprocess execution failed'},
+                'error': {
+                    'code': ERROR_EXTERNAL_PROCESS,
+                    'message': proc.stderr.strip() or 'subprocess execution failed',
+                    'details': details,
+                },
             }
         try:
             return json.loads(proc.stdout or '{}')
@@ -89,7 +132,11 @@ class SubprocessLSPRBackend(LSPRBackend):
                 'ok': False,
                 'backend': 'subprocess',
                 'details': details,
-                'error': {'code': 'invalid_json', 'message': 'subprocess returned invalid JSON'},
+                'error': {
+                    'code': ERROR_EXTERNAL_PROCESS,
+                    'message': 'subprocess returned invalid JSON',
+                    'details': details,
+                },
             }
 
     def _build_subprocess_env(self) -> Dict[str, str]:

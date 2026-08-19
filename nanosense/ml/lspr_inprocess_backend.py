@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import logging
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -17,8 +18,12 @@ from .lspr_backend_protocol import (
     LSPRBackend,
     PredictSingleRequest,
     PredictionResponse,
+    ERROR_MODEL,
 )
 from .lspr_master_bridge import LSPRMasterBridge
+
+
+logger = logging.getLogger(__name__)
 
 
 class InProcessLSPRBackend(LSPRBackend):
@@ -77,6 +82,7 @@ class InProcessLSPRBackend(LSPRBackend):
                 metrics={},
             )
         except Exception as exc:
+            logger.exception("LSPR in-process single prediction failed")
             return PredictionResponse(
                 ok=False,
                 backend='inprocess',
@@ -87,7 +93,11 @@ class InProcessLSPRBackend(LSPRBackend):
                 uloq_ng_ml=None,
                 super_quant_bin=None,
                 metrics={},
-                error=ErrorResponse(code='predict_single_failed', message=str(exc)),
+                error=ErrorResponse(
+                    code=ERROR_MODEL,
+                    message="LSPR model prediction failed",
+                    details={"exception_type": type(exc).__name__},
+                ),
             )
 
     def build_comparison(self, request: BuildComparisonRequest) -> ComparisonResponse:
@@ -117,6 +127,7 @@ class InProcessLSPRBackend(LSPRBackend):
                 },
             )
         except Exception as exc:
+            logger.exception("LSPR in-process spectrum comparison failed")
             return ComparisonResponse(
                 ok=False,
                 backend='inprocess',
@@ -127,7 +138,11 @@ class InProcessLSPRBackend(LSPRBackend):
                 aligned_spectrum=[],
                 physical_spectrum=None,
                 metrics={},
-                error=ErrorResponse(code='build_comparison_failed', message=str(exc)),
+                error=ErrorResponse(
+                    code=ERROR_MODEL,
+                    message="LSPR model spectrum comparison failed",
+                    details={"exception_type": type(exc).__name__},
+                ),
             )
 
     def build_digital_twin(self, request: BuildDigitalTwinRequest) -> DigitalTwinResponse:
@@ -151,6 +166,7 @@ class InProcessLSPRBackend(LSPRBackend):
                 },
             )
         except Exception as exc:
+            logger.exception("LSPR in-process digital twin failed")
             return DigitalTwinResponse(
                 ok=False,
                 backend='inprocess',
@@ -160,7 +176,11 @@ class InProcessLSPRBackend(LSPRBackend):
                 physical_spectrum=[],
                 ai_spectrum=None,
                 metrics={},
-                error=ErrorResponse(code='build_digital_twin_failed', message=str(exc)),
+                error=ErrorResponse(
+                    code=ERROR_MODEL,
+                    message="LSPR model digital twin failed",
+                    details={"exception_type": type(exc).__name__},
+                ),
             )
 
     def predict_batch(self, request: BatchPredictRequest) -> BatchPredictionResponse:
@@ -191,9 +211,14 @@ class InProcessLSPRBackend(LSPRBackend):
                 })
             return BatchPredictionResponse(ok=True, backend='inprocess', rows=rows)
         except Exception as exc:
+            logger.exception("LSPR in-process batch prediction failed")
             return BatchPredictionResponse(
                 ok=False,
                 backend='inprocess',
                 rows=[],
-                error=ErrorResponse(code='predict_batch_failed', message=str(exc)),
+                error=ErrorResponse(
+                    code=ERROR_MODEL,
+                    message="LSPR model batch prediction failed",
+                    details={"exception_type": type(exc).__name__},
+                ),
             )
