@@ -1,5 +1,6 @@
 import threading
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -152,3 +153,11 @@ def test_measurement_widget_stop_all_activities_delegates_to_service():
 
     MeasurementWidget.stop_all_activities(fake)
     assert calls == [0.5]
+
+
+def test_main_window_does_not_create_or_wait_on_batch_threads():
+    source = Path("nanosense/gui/main_window.py").read_text(encoding="utf-8")
+    assert "self.batch_thread = QThread()" not in source
+    assert "self.batch_worker.moveToThread" not in source
+    assert "self.batch_thread.start()" not in source
+    assert "self.batch_thread.wait" not in source

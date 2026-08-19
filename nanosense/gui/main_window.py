@@ -38,6 +38,7 @@ from .spectrum_classification_dialog import SpectrumClassificationDialog
 
 from ..utils.file_io import load_spectra_from_path, load_spectrum
 from ..core.controller import FX2000Controller
+from ..core.acquisition import AcquisitionService
 from ..core.spectrum_processor import SpectrumProcessor
 from ..core.batch_acquisition import BatchRunDialog, BatchAcquisitionWorker
 from ..core.database_manager import DatabaseManager
@@ -48,7 +49,7 @@ from ..utils.plot_theme import (
     configure_pyqtgraph_theme,
 )
 
-from PyQt5.QtCore import QThread, pyqtSignal, Qt, QTranslator
+from PyQt5.QtCore import pyqtSignal, Qt, QTranslator
 
 
 class AppWindow(QMainWindow):
@@ -1006,19 +1007,11 @@ class AppWindow(QMainWindow):
             except Exception as exc:
                 print(f"stop_all_activities 异常: {exc}")
 
-        # 等可能还在跑的批采 worker 退出（有锁保护，最多等 2 秒）
-        thread = getattr(self, 'batch_thread', None)
-        if thread is not None:
+        # 由采集服务停止并等待批量线程，GUI 不直接操作 QThread。
+        service = getattr(self, "batch_service", None)
+        if service is not None:
             try:
-                if thread.isRunning():
-                    worker = getattr(self, 'batch_worker', None)
-                    if worker is not None:
-                        try:
-                            worker.stop()
-                        except Exception:
-                            pass
-                    thread.quit()
-                    thread.wait(2000)
+                service.close(timeout_s=2.0)
             except RuntimeError:
                 pass
 
@@ -1695,9 +1688,9 @@ class AppWindow(QMainWindow):
         
         operator_name = operator_name or self.tr("Batch Operator")
         
-        # 创建运行对话框和工作线程
+        # 创建运行对话框和批量采集服务
         self.run_dialog = BatchRunDialog(self)
-        self.batch_thread = QThread()
+        self.batch_service = AcquisitionService(self.controller, parent=self)
         self.batch_worker = BatchAcquisitionWorker(
             self.controller,
             layout_data,
@@ -1722,26 +1715,16 @@ class AppWindow(QMainWindow):
         self.run_dialog.peak_method_changed.connect(self.batch_worker.update_peak_method)
         self.run_dialog.processing_settings_changed.connect(self.batch_worker.update_processing_settings)
         
-        # 移动工作线程并连接信号
-        self.batch_worker.moveToThread(self.batch_thread)
-        self.batch_thread.started.connect(self.batch_worker.run)
-        self.batch_worker.finished.connect(self.batch_thread.quit)
-        self.batch_worker.finished.connect(self.batch_worker.deleteLater)
-        self.batch_thread.finished.connect(self.batch_thread.deleteLater)
+        self.batch_handle = self.batch_service.start_batch(self.batch_worker)
+        self.batch_thread = self.batch_handle.thread
 
-        # 用户中止/关闭对话框时，先把 worker 停掉，避免它在被 deleteLater 后还在 emit
+        # 用户中止/关闭对话框时由服务停止 worker 和线程。
         self.run_dialog.abort_mission.connect(
-            self.batch_worker.stop, Qt.DirectConnection
+            self.batch_service.stop, Qt.DirectConnection
         )
         
         # 错误处理
-        self.batch_worker.error.connect(
-            lambda msg: QMessageBox.critical(
-                self,
-                self.tr("Error"),
-                self.tr(msg) if isinstance(msg, str) else msg
-            )
-        )
+        self.batch_service.error_occurred.connect(self._show_batch_error)
         
         # 更新对话框和实时预览
         self.batch_worker.update_dialog.connect(self.run_dialog.update_state)
@@ -1768,12 +1751,11 @@ class AppWindow(QMainWindow):
         
         self.run_dialog.back_triggered.connect(self.batch_worker.go_back, Qt.DirectConnection)
         
-        # 连接线程完成信号
-        self.batch_thread.finished.connect(self.run_dialog.accept)
+        # 连接服务完成信号
+        self.batch_handle.finished.connect(self.run_dialog.accept)
         self.batch_worker.finished.connect(self._on_batch_acquisition_finished)
         
-        # 启动线程并显示对话框
-        self.batch_thread.start()
+        # 显示对话框；服务已负责启动线程
         self.run_dialog.show()
         
         result = self.run_dialog.exec_()
@@ -1798,8 +1780,9 @@ class AppWindow(QMainWindow):
         """中止批量采集任务并完全重置硬件控制器"""
         print("正在中止批量采集任务...")
         
-        if hasattr(self, 'batch_worker') and self.batch_worker:
-            self.batch_worker.stop()
+        service = getattr(self, "batch_service", None)
+        if service is not None:
+            service.close(timeout_s=2.0)
         
         print("正在执行硬件控制器断开连接...")
         FX2000Controller.disconnect()
@@ -1854,8 +1837,13 @@ class AppWindow(QMainWindow):
 
         # worker / thread 已经各自走 deleteLater，这里把 Python 端引用断掉，
         # 避免下次启动批量任务前残留的属性指向半销毁对象。
+        self.batch_service = None
+        self.batch_handle = None
         self.batch_worker = None
         self.batch_thread = None
+
+    def _show_batch_error(self, message):
+        QMessageBox.critical(self, self.tr("Error"), self.tr(message))
     def update_run_dialog(self, status: dict):
         """更新运行对话框状态"""
         if "instruction" in status:
