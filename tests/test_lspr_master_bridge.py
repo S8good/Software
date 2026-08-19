@@ -21,9 +21,77 @@ from nanosense.ml.lspr_master_bridge import LSPRMasterBridge
 from nanosense.ml.lspr_subprocess_backend import SubprocessLSPRBackend
 
 
+def make_master_root(tmp_path: Path, missing=()):
+    root = tmp_path / "LSPR_Spectra_Master"
+    missing = set(missing)
+    for relative_path, _ in LSPRMasterBridge.REQUIRED_FILES:
+        if relative_path in missing:
+            continue
+        target = root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# test fixture", encoding="utf-8")
+    return root
+
+
 def test_bridge_rejects_missing_master_root():
     with pytest.raises(FileNotFoundError):
         LSPRMasterBridge(master_root=PROJECT_ROOT / "DeepLearning" / "missing_repo")
+
+
+def test_bridge_prefers_explicit_root_over_environment(monkeypatch, tmp_path):
+    explicit_root = make_master_root(tmp_path / "explicit")
+    environment_root = make_master_root(tmp_path / "environment")
+    monkeypatch.setenv("LSPR_MASTER_ROOT", str(environment_root))
+
+    bridge = LSPRMasterBridge(master_root=explicit_root)
+
+    assert bridge.master_root == explicit_root.resolve()
+    assert bridge.diagnostics()["resolution_source"] == "explicit"
+
+
+def test_bridge_uses_environment_root_when_explicit_root_is_empty(monkeypatch, tmp_path):
+    environment_root = make_master_root(tmp_path / "environment")
+    monkeypatch.setenv("LSPR_MASTER_ROOT", str(environment_root))
+
+    bridge = LSPRMasterBridge()
+
+    assert bridge.master_root == environment_root.resolve()
+    assert bridge.diagnostics()["resolution_source"] == "environment"
+
+
+def test_bridge_detects_adjacent_root(monkeypatch, tmp_path):
+    adjacent_root = make_master_root(tmp_path)
+    monkeypatch.delenv("LSPR_MASTER_ROOT", raising=False)
+    monkeypatch.setattr(LSPRMasterBridge, "_software_root", staticmethod(lambda: tmp_path), raising=False)
+
+    bridge = LSPRMasterBridge()
+
+    assert bridge.master_root == adjacent_root.resolve()
+    assert bridge.diagnostics()["resolution_source"] == "adjacent"
+
+
+def test_bridge_missing_root_error_contains_candidates_and_repair_guidance(monkeypatch, tmp_path):
+    monkeypatch.delenv("LSPR_MASTER_ROOT", raising=False)
+    monkeypatch.setattr(LSPRMasterBridge, "_software_root", staticmethod(lambda: tmp_path), raising=False)
+    missing_root = tmp_path / "missing"
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        LSPRMasterBridge(master_root=missing_root)
+
+    error = exc_info.value
+    assert str(missing_root.resolve()) in str(error)
+    assert "LSPR_MASTER_ROOT" in str(error)
+    assert error.diagnostics["candidate_paths"]
+
+
+def test_bridge_missing_required_file_is_reported_in_diagnostics(tmp_path):
+    missing_file = "models/pretrained/spectral_predictor_v2.pth"
+    root = make_master_root(tmp_path, missing={missing_file})
+
+    with pytest.raises(FileNotFoundError) as exc_info:
+        LSPRMasterBridge(master_root=root)
+
+    assert missing_file in exc_info.value.diagnostics["missing_files"]
 
 
 def test_bridge_rejects_missing_pretrained_artifacts(tmp_path: Path):
