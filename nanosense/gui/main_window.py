@@ -1715,9 +1715,6 @@ class AppWindow(QMainWindow):
         self.run_dialog.peak_method_changed.connect(self.batch_worker.update_peak_method)
         self.run_dialog.processing_settings_changed.connect(self.batch_worker.update_processing_settings)
         
-        self.batch_handle = self.batch_service.start_batch(self.batch_worker)
-        self.batch_thread = self.batch_handle.thread
-
         # 用户中止/关闭对话框时由服务停止 worker 和线程。
         self.run_dialog.abort_mission.connect(
             self.batch_service.stop, Qt.DirectConnection
@@ -1751,8 +1748,10 @@ class AppWindow(QMainWindow):
         
         self.run_dialog.back_triggered.connect(self.batch_worker.go_back, Qt.DirectConnection)
         
-        # 连接服务完成信号
-        self.batch_handle.finished.connect(self.run_dialog.accept)
+        # 所有 UI/业务信号连接完成后再启动服务，避免自动采集丢失首帧事件。
+        self.batch_service.finished.connect(self.run_dialog.accept)
+        self.batch_handle = self.batch_service.start_batch(self.batch_worker)
+        self.batch_thread = self.batch_handle.thread
         self.batch_worker.finished.connect(self._on_batch_acquisition_finished)
         
         # 显示对话框；服务已负责启动线程

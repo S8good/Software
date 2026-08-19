@@ -198,3 +198,12 @@ def test_main_window_does_not_create_or_wait_on_batch_threads():
     assert "self.batch_worker.moveToThread" not in source
     assert "self.batch_thread.start()" not in source
     assert "self.batch_thread.wait" not in source
+
+
+def test_main_window_wires_batch_signals_before_starting_service():
+    source = Path("nanosense/gui/main_window.py").read_text(encoding="utf-8")
+    start_index = source.index("self.batch_handle = self.batch_service.start_batch")
+    preview_index = source.index("self.batch_worker.update_dialog.connect")
+    peak_index = source.index("self.batch_worker.peak_found.connect")
+    assert start_index > preview_index
+    assert start_index > peak_index
