@@ -38,3 +38,17 @@ def test_full_environment_snapshot_is_diagnostic_and_portable():
     assert "  - python=3.9.7=" in content
     assert "      - numpy==1.26.4" in content
     assert "      - pyqtgraph==0.12.4" in content
+
+
+def test_readme_uses_the_verified_installation_commands():
+    content = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "Python 3.9" in content
+    assert "Python 3.10+" not in content
+    assert "conda env create -f environment.yml" in content
+    assert "conda activate py39" in content
+    assert 'python -m pip install -e ".[dev]"' in content
+    assert "python -m nanosense" in content
+    assert "environment-py39-lock.yml" in content
+    assert "可编辑安装" in content
+    assert "独立 Windows 安装包" in content

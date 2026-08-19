@@ -254,18 +254,28 @@ Raman 模式下除了基础采谱与预处理，还提供：
 
 ### 4.1 环境准备
 
-建议使用 Python 3.10+。
+当前支持并验证的运行环境为 64 位 Windows 和 Python 3.9。推荐使用 Conda 创建最小开发环境：
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+```powershell
+conda env create -f environment.yml
+conda activate py39
+python -m nanosense
 ```
 
-如需运行测试：
+如果已经有 Python 3.9 环境，可使用可编辑安装：
 
-```bash
-pytest tests
+```powershell
+python -m pip install -e ".[dev]"
+python -m nanosense
+```
+
+`environment.yml` 是日常安装入口；`environment-py39-lock.yml` 是当前已验证工作站的完整诊断快照，包含 NanoSense 不直接依赖的工具，不建议作为普通安装入口。
+
+运行测试：
+
+```powershell
+$env:QT_QPA_PLATFORM = "offscreen"
+python -m pytest -q
 ```
 
 ### 4.2 启动应用
@@ -461,6 +471,8 @@ pytest tests
 ---
 
 ## 10. 已知限制与使用建议
+
+当前发布形式支持从源码目录进行可编辑安装。硬件 DLL 仍从仓库顶层 `drivers/` 目录加载，尚未提供包含厂商驱动的独立 Windows 安装包；驱动重定位、许可核对和安装包验证属于 M4 发布工作。
 
 ### 10.1 硬件相关
 
