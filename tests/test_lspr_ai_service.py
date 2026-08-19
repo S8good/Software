@@ -4,7 +4,11 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from nanosense.ml.lspr_ai_service import LSPRAIService
+import pytest
+import nanosense.ml.lspr_ai_service as ai_service
+
+LSPRAIService = ai_service.LSPRAIService
+LSPRAIServiceError = getattr(ai_service, "LSPRAIServiceError", RuntimeError)
 from nanosense.ml.lspr_backend_protocol import (
     BatchPredictionResponse,
     ComparisonResponse,
@@ -87,8 +91,38 @@ class _ErrorBackend(_StubBackend):
             uloq_ng_ml=None,
             super_quant_bin=None,
             metrics={},
-            error=ErrorResponse(code="prediction_failed", message="model missing"),
+            error=ErrorResponse(
+                code="model_error",
+                message="model missing",
+                details={"exception_type": "FileNotFoundError"},
+            ),
         )
+
+
+class _TrackingBackend(_StubBackend):
+    def __init__(self):
+        self.calls = {
+            "predict_single": 0,
+            "build_comparison": 0,
+            "build_digital_twin": 0,
+            "predict_batch": 0,
+        }
+
+    def predict_single(self, request):
+        self.calls["predict_single"] += 1
+        return super().predict_single(request)
+
+    def build_comparison(self, request):
+        self.calls["build_comparison"] += 1
+        return super().build_comparison(request)
+
+    def build_digital_twin(self, request):
+        self.calls["build_digital_twin"] += 1
+        return super().build_digital_twin(request)
+
+    def predict_batch(self, request):
+        self.calls["predict_batch"] += 1
+        return super().predict_batch(request)
 
 
 def test_service_predict_single_returns_expected_summary_fields():
@@ -97,11 +131,16 @@ def test_service_predict_single_returns_expected_summary_fields():
     result = service.predict_single_spectrum(
         wavelengths=[500.0, 501.0, 502.0],
         intensities=[0.1, 0.2, 0.3],
+        metadata={"source": "unit-test"},
     )
 
     assert result.predicted_concentration_ng_ml == 12.34
     assert result.reported_text == "12.3400 ng/ml"
     assert result.metrics["peak_wavelength_nm"] == 612.5
+    assert result.provenance["backend"] == "stub"
+    assert result.provenance["model_mode"] == "auto"
+    assert result.provenance["metadata"] == {"source": "unit-test"}
+    assert result.provenance["requested_at"].endswith("+00:00")
 
 
 def test_service_build_comparison_returns_visual_arrays():
@@ -136,10 +175,70 @@ def test_service_raises_runtime_error_when_backend_returns_error_response():
             wavelengths=[500.0, 501.0, 502.0],
             intensities=[0.1, 0.2, 0.3],
         )
-    except RuntimeError as exc:
+    except LSPRAIServiceError as exc:
         assert "model missing" in str(exc)
+        assert exc.code == "model_error"
+        assert exc.details["exception_type"] == "FileNotFoundError"
     else:
         raise AssertionError("expected RuntimeError when backend returns error response")
+
+
+def test_service_rejects_invalid_single_input_before_backend_call():
+    backend = _TrackingBackend()
+    service = LSPRAIService(backend=backend)
+
+    with pytest.raises(LSPRAIServiceError) as exc_info:
+        service.predict_single_spectrum([500.0, 501.0], [0.1, 0.2])
+
+    assert exc_info.value.code == "input_invalid"
+    assert backend.calls["predict_single"] == 0
+
+
+def test_service_rejects_invalid_comparison_before_backend_call():
+    backend = _TrackingBackend()
+    service = LSPRAIService(backend=backend)
+
+    with pytest.raises(LSPRAIServiceError) as exc_info:
+        service.build_spectrum_comparison([500.0, 501.0, 502.0], [0.1, 0.2])
+
+    assert exc_info.value.code == "input_invalid"
+    assert backend.calls["build_comparison"] == 0
+
+
+def test_service_rejects_invalid_digital_twin_request_before_backend_call():
+    backend = _TrackingBackend()
+    service = LSPRAIService(backend=backend)
+
+    with pytest.raises(LSPRAIServiceError) as exc_info:
+        service.build_digital_twin_context(-1.0)
+
+    assert exc_info.value.code == "input_invalid"
+    assert backend.calls["build_digital_twin"] == 0
+
+
+def test_service_rejects_incomplete_digital_twin_experimental_spectrum():
+    backend = _TrackingBackend()
+    service = LSPRAIService(backend=backend)
+
+    with pytest.raises(LSPRAIServiceError) as exc_info:
+        service.build_digital_twin_context(
+            1.0,
+            experimental_wavelengths=[500.0, 501.0, 502.0],
+        )
+
+    assert exc_info.value.code == "input_invalid"
+    assert backend.calls["build_digital_twin"] == 0
+
+
+def test_service_rejects_empty_batch_before_backend_call():
+    backend = _TrackingBackend()
+    service = LSPRAIService(backend=backend)
+
+    with pytest.raises(LSPRAIServiceError) as exc_info:
+        service.predict_batch([])
+
+    assert exc_info.value.code == "input_invalid"
+    assert backend.calls["predict_batch"] == 0
 
 
 def test_service_compare_models_returns_one_row_per_model_mode():
