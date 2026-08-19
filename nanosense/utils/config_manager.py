@@ -45,6 +45,7 @@ def get_default_settings():
         "database_path": default_db_path,
         "lspr_master_root": "",
         LSPR_BACKEND_MODE_KEY: "auto",
+        "lspr_subprocess_python": "",
         "lspr_default_artifact_dir": "",
         "lspr_enable_digital_twin_overlay": True,
         "lspr_batch_export_dir": "",

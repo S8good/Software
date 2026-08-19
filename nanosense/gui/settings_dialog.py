@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
 )
 
 from nanosense.core.database_manager import DatabaseManager
+from nanosense.ml.lspr_backend_factory import create_lspr_backend
 
 
 class SettingsDialog(QDialog):
@@ -108,6 +109,17 @@ class SettingsDialog(QDialog):
         self.lspr_backend_mode_label = QLabel()
         lspr_layout.addRow(self.lspr_backend_mode_label, self.lspr_backend_mode_combo)
 
+        self.lspr_subprocess_python_edit = QLineEdit()
+        self.lspr_subprocess_python_browse_btn = QPushButton()
+        python_layout = QHBoxLayout()
+        python_layout.addWidget(self.lspr_subprocess_python_edit)
+        python_layout.addWidget(self.lspr_subprocess_python_browse_btn)
+        self.lspr_subprocess_python_label = QLabel()
+        lspr_layout.addRow(self.lspr_subprocess_python_label, python_layout)
+
+        self.lspr_test_connection_button = QPushButton()
+        lspr_layout.addRow(self.lspr_test_connection_button)
+
         self.lspr_default_artifact_dir_edit = QLineEdit()
         self.lspr_default_artifact_dir_browse_btn = QPushButton()
         artifact_layout = QHBoxLayout()
@@ -146,6 +158,10 @@ class SettingsDialog(QDialog):
         self.db_path_browse_btn.clicked.connect(self._browse_db_file)
         self.init_db_button.clicked.connect(self._initialize_db)
         self.lspr_master_root_browse_btn.clicked.connect(lambda: self._browse_folder(self.lspr_master_root_edit))
+        self.lspr_subprocess_python_browse_btn.clicked.connect(
+            lambda: self._browse_file(self.lspr_subprocess_python_edit)
+        )
+        self.lspr_test_connection_button.clicked.connect(self._test_lspr_connection)
         self.lspr_default_artifact_dir_browse_btn.clicked.connect(
             lambda: self._browse_folder(self.lspr_default_artifact_dir_edit)
         )
@@ -189,6 +205,9 @@ class SettingsDialog(QDialog):
         self.lspr_batch_export_dir_label.setText(self.tr("Batch Export Directory:"))
         self.lspr_enable_digital_twin_overlay_label.setText(self.tr("Enable Digital Twin Overlay:"))
         self.lspr_master_root_browse_btn.setText(browse_text)
+        self.lspr_subprocess_python_label.setText(self.tr("Subprocess Python Interpreter:"))
+        self.lspr_subprocess_python_browse_btn.setText(browse_text)
+        self.lspr_test_connection_button.setText(self.tr("Test LSPR Connection"))
         self.lspr_default_artifact_dir_browse_btn.setText(browse_text)
         self.lspr_batch_export_dir_browse_btn.setText(browse_text)
 
@@ -209,6 +228,47 @@ class SettingsDialog(QDialog):
         )
         if path:
             self.db_path_edit.setText(path)
+
+    def _browse_file(self, line_edit):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            self.tr("Select Python Interpreter"),
+            line_edit.text(),
+        )
+        if path:
+            line_edit.setText(path)
+
+    def _test_lspr_connection(self):
+        config = {
+            "lspr_master_root": self.lspr_master_root_edit.text().strip(),
+            "lspr_backend_mode": self.lspr_backend_mode_combo.currentData(),
+            "lspr_subprocess_python": self.lspr_subprocess_python_edit.text().strip(),
+        }
+        try:
+            result = create_lspr_backend(config).health_check()
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                self.tr("LSPR Connection Failed"),
+                self.tr("Unable to test the LSPR backend: {0}").format(str(exc)),
+            )
+            return
+
+        details = dict(result.details or {})
+        if result.ok:
+            root = details.get("master_root") or details.get("runner_path") or self.tr("not reported")
+            QMessageBox.information(
+                self,
+                self.tr("LSPR Connection Successful"),
+                self.tr("Backend: {0}\nRoot/runner: {1}").format(result.backend, root),
+            )
+            return
+
+        error_message = result.error.message if result.error is not None else self.tr("backend health check failed")
+        missing = details.get("missing_files") or []
+        if missing:
+            error_message += self.tr("\nMissing files: {0}").format(", ".join(str(item) for item in missing))
+        QMessageBox.warning(self, self.tr("LSPR Connection Failed"), error_message)
 
     def _initialize_db(self):
         db_path = self.db_path_edit.text()
@@ -248,6 +308,7 @@ class SettingsDialog(QDialog):
         mode_index = self.lspr_backend_mode_combo.findData(backend_mode)
         if mode_index >= 0:
             self.lspr_backend_mode_combo.setCurrentIndex(mode_index)
+        self.lspr_subprocess_python_edit.setText(self.settings.get("lspr_subprocess_python", ""))
         self.lspr_default_artifact_dir_edit.setText(self.settings.get("lspr_default_artifact_dir", ""))
         self.lspr_batch_export_dir_edit.setText(self.settings.get("lspr_batch_export_dir", ""))
         self.lspr_enable_digital_twin_overlay_checkbox.setChecked(
@@ -263,6 +324,7 @@ class SettingsDialog(QDialog):
         self.settings["database_path"] = self.db_path_edit.text()
         self.settings["lspr_master_root"] = self.lspr_master_root_edit.text()
         self.settings["lspr_backend_mode"] = self.lspr_backend_mode_combo.currentData()
+        self.settings["lspr_subprocess_python"] = self.lspr_subprocess_python_edit.text()
         self.settings.pop("lspr_default_model_mode", None)
         self.settings.pop("backend_mode", None)
         self.settings["lspr_default_artifact_dir"] = self.lspr_default_artifact_dir_edit.text()

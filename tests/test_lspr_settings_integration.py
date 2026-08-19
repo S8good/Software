@@ -40,6 +40,7 @@ def test_default_settings_use_the_canonical_backend_key():
     settings = config_manager.get_default_settings()
 
     assert settings["lspr_backend_mode"] == "auto"
+    assert settings["lspr_subprocess_python"] == ""
     assert "lspr_default_model_mode" not in settings
     assert "backend_mode" not in settings
 
@@ -134,6 +135,59 @@ def test_settings_dialog_reads_and_saves_canonical_mode():
         settings = dialog.get_settings()
         assert settings["lspr_backend_mode"] == "inprocess"
         assert "lspr_default_model_mode" not in settings
+    finally:
+        dialog.close()
+
+
+def test_settings_dialog_reads_and_saves_subprocess_python():
+    qapp()
+    dialog = SettingsDialog({"lspr_subprocess_python": "C:/Python/python.exe"})
+
+    try:
+        assert dialog.lspr_subprocess_python_edit.text() == "C:/Python/python.exe"
+        dialog.lspr_subprocess_python_edit.setText("C:/Python/py39.exe")
+        dialog._save_and_accept()
+
+        assert dialog.get_settings()["lspr_subprocess_python"] == "C:/Python/py39.exe"
+    finally:
+        dialog.close()
+
+
+def test_settings_dialog_tests_connection_without_persisting(monkeypatch):
+    qapp()
+    created_configs = []
+
+    class StubBackend:
+        def health_check(self):
+            return HealthCheckResponse(
+                ok=True,
+                backend="stub",
+                details={"master_root": "C:/LSPR_Spectra_Master"},
+            )
+
+    def fake_create_backend(config):
+        created_configs.append(dict(config))
+        return StubBackend()
+
+    monkeypatch.setattr("nanosense.gui.settings_dialog.create_lspr_backend", fake_create_backend)
+    monkeypatch.setattr("nanosense.gui.settings_dialog.QMessageBox.information", lambda *args: None)
+    monkeypatch.setattr("nanosense.gui.settings_dialog.QMessageBox.warning", lambda *args: None)
+    monkeypatch.setattr("nanosense.gui.settings_dialog.QMessageBox.critical", lambda *args: None)
+
+    dialog = SettingsDialog({"lspr_backend_mode": "subprocess"})
+    try:
+        dialog.lspr_master_root_edit.setText("C:/LSPR_Spectra_Master")
+        dialog.lspr_subprocess_python_edit.setText("C:/Python/py39.exe")
+        dialog._test_lspr_connection()
+
+        assert created_configs == [
+            {
+                "lspr_master_root": "C:/LSPR_Spectra_Master",
+                "lspr_backend_mode": "subprocess",
+                "lspr_subprocess_python": "C:/Python/py39.exe",
+            }
+        ]
+        assert dialog.result() == 0
     finally:
         dialog.close()
 
