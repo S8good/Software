@@ -6,6 +6,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from nanosense.core.database_manager import DatabaseManager
+import json
 
 
 def _fresh_manager(db_path):
@@ -68,3 +69,33 @@ def test_save_lspr_ai_prediction_returns_none_for_missing_connection(tmp_path):
     )
 
     assert result is None
+
+
+def test_save_lspr_ai_prediction_derives_algorithm_version_and_preserves_provenance(tmp_path):
+    db_path = tmp_path / "lspr-provenance.db"
+    manager = _fresh_manager(db_path)
+    project_id = manager.find_or_create_project("Provenance Demo")
+    experiment_id = manager.create_experiment(project_id, "Exp 1", "LSPR", "2025-01-01 10:00:00")
+
+    analysis_run_id = manager.save_lspr_ai_prediction(
+        experiment_id=experiment_id,
+        metrics={"predicted_concentration_ng_ml": 3.21},
+        input_context={
+            "model_mode": "v2",
+            "provenance": {
+                "backend": "stub",
+                "requested_at": "2026-08-19T00:00:00+00:00",
+                "metadata": {"source": "unit-test"},
+            },
+        },
+    )
+
+    row = manager.conn.execute(
+        "SELECT algorithm_version, input_context FROM analysis_runs WHERE analysis_run_id = ?",
+        (analysis_run_id,),
+    ).fetchone()
+
+    assert row[0] == "v2"
+    context = json.loads(row[1])
+    assert context["provenance"]["backend"] == "stub"
+    assert context["provenance"]["metadata"]["source"] == "unit-test"
