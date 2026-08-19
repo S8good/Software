@@ -17,7 +17,7 @@ import argparse
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from nanosense.core.database_manager import DatabaseManager
 
@@ -195,7 +195,7 @@ def seed_calibration_experiment(db: DatabaseManager, project_id: int) -> None:
     )
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Generate a demo SQLite database for the Database Explorer UI.",
     )
@@ -209,7 +209,12 @@ def main() -> None:
         action="store_true",
         help="Overwrite an existing database file if present.",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     output_path = Path(args.output).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -262,7 +267,8 @@ def main() -> None:
         manager.close()
 
     print(f"Demo database generated at: {output_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

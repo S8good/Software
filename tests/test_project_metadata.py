@@ -45,7 +45,11 @@ def test_project_metadata_matches_verified_py39_baseline():
     assert project["requires-python"] == ">=3.9,<3.10"
     assert requirement_map(project["dependencies"]) == EXPECTED_RUNTIME
     assert project["optional-dependencies"]["dev"] == ["pytest==8.3.4"]
-    assert project["scripts"]["nanosense"] == "main:main"
+    assert project["scripts"] == {
+        "nanosense": "main:main",
+        "nanosense-import-spectra": "scripts.import_spectra:main",
+        "nanosense-generate-demo-database": "scripts.generate_demo_database:main",
+    }
 
 
 def test_build_configuration_includes_modules_and_resources():
@@ -99,4 +103,11 @@ def test_wheel_contains_entrypoint_assets_and_translation(tmp_path):
     assert "nanosense/gui/assets/app_icon.ico" in names
     assert "nanosense/gui/assets/icons/zoom.png" in names
     assert "nanosense/translations/chinese.qm" in names
+    assert "scripts/import_spectra.py" in names
+    assert "scripts/generate_demo_database.py" in names
     assert "nanosense = main:main" in entry_points
+    assert "nanosense-import-spectra = scripts.import_spectra:main" in entry_points
+    assert (
+        "nanosense-generate-demo-database = scripts.generate_demo_database:main"
+        in entry_points
+    )

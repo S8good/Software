@@ -12,7 +12,6 @@ spectrum_data) stay in sync with the legacy tables.
 import argparse
 import json
 import os
-import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -217,7 +216,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: List[str]) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -269,4 +268,4 @@ def main(argv: List[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    raise SystemExit(main())
