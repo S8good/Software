@@ -71,3 +71,11 @@ def test_file_handler_uses_rotation(tmp_path):
     assert rotating
     assert rotating[0].maxBytes == 5 * 1024 * 1024
     assert rotating[0].backupCount == 3
+
+
+def test_launcher_uses_logging_setup_and_exception_logger():
+    source = open("main.py", encoding="utf-8").read()
+    assert "configure_logging" in source
+    assert "new_session_id" in source
+    assert "logger.exception" in source
+    assert "with open(crash_log" not in source

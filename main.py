@@ -5,7 +5,6 @@ import sys
 import os
 import time
 import traceback
-import datetime
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QIcon
@@ -14,29 +13,26 @@ from nanosense.gui.splash_screen import SplashScreen
 from nanosense.gui.welcome_widget import WelcomeWidget
 from nanosense.utils.config_manager import load_settings
 from nanosense.utils.plot_theme import configure_pyqtgraph_theme
+from nanosense.utils.logging_config import (
+    configure_logging,
+    get_logger,
+    logging_context,
+    new_session_id,
+)
+
+
+logger = get_logger(__name__)
 
 
 def _install_global_excepthook():
-    """
-    把所有未捕获异常写到 logs/crash.log，避免直接闪退还能拿到现场。
-    依然保留默认 print，用户在终端里也能看到。
-    """
-    log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
-    os.makedirs(log_dir, exist_ok=True)
-    crash_log = os.path.join(log_dir, 'crash.log')
-
     def _hook(exc_type, exc_value, exc_tb):
-        # KeyboardInterrupt 还是按默认行为走，方便 Ctrl+C 退出
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_tb)
             return
-        try:
-            with open(crash_log, 'a', encoding='utf-8') as f:
-                f.write(f"\n=== {datetime.datetime.now().isoformat()} ===\n")
-                traceback.print_exception(exc_type, exc_value, exc_tb, file=f)
-        except Exception:
-            pass
-        # 终端也保留一份
+        logger.exception(
+            "uncaught_exception event=uncaught_exception",
+            exc_info=(exc_type, exc_value, exc_tb),
+        )
         traceback.print_exception(exc_type, exc_value, exc_tb)
 
     sys.excepthook = _hook
@@ -104,14 +100,19 @@ def launch_main_app(mode_name, use_real_hardware, hardware_vendor='ideaoptics'):
     if welcome_screen:
         welcome_screen.hide()
 
-    print(f"接收到启动信号，模式: {mode_name}, 使用真实硬件: {use_real_hardware}, vendor: {hardware_vendor}")
+    logger.info(
+        "launcher_selection event=launcher_selection mode=%s real_hardware=%s vendor=%s",
+        mode_name,
+        use_real_hardware,
+        hardware_vendor,
+    )
 
     main_app_window = AppWindow(use_real_hardware=use_real_hardware, hardware_vendor=hardware_vendor)
 
     # --- 【核心修改】检查硬件连接是否失败 ---
     if main_app_window.controller is None:
         # AppWindow 内部已经弹出了错误提示框，并且会自动关闭
-        print("主窗口初始化失败 (硬件连接失败)，正在返回欢迎页...")
+        logger.warning("main_window_start_failed event=main_window_start_failed")
 
         # 重新显示欢迎页
         if welcome_screen:
@@ -119,7 +120,7 @@ def launch_main_app(mode_name, use_real_hardware, hardware_vendor='ideaoptics'):
         return  # 终止这次失败的启动尝试
 
     # --- 如果硬件连接成功，则执行以下代码 ---
-    print("硬件连接成功，正在启动主窗口...")
+    logger.info("main_window_started event=main_window_started")
     main_app_window.restart_requested.connect(show_welcome_screen)
 
     main_app_window.switch_to_initial_view(mode_name)
@@ -139,8 +140,14 @@ def _build_argument_parser():
 
 
 def main(argv=None):
-    _build_argument_parser().parse_args(argv)
+    configure_logging()
     _install_global_excepthook()
+    with logging_context(session_id=new_session_id()):
+        return _run_application(argv)
+
+
+def _run_application(argv=None):
+    _build_argument_parser().parse_args(argv)
     configure_pyqtgraph_theme(load_settings().get("theme", "dark"))
 
     qt_argv = sys.argv if argv is None else [sys.argv[0], *argv]
@@ -152,7 +159,7 @@ def main(argv=None):
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
     else:
-        print(f"警告：应用图标文件未找到于 {icon_path}")
+        logger.warning("missing_app_icon event=missing_app_icon")
 
     splash = None
     splash_image_path = os.path.join(
