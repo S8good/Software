@@ -1198,10 +1198,15 @@ class DatabaseManager:
             cursor = self.conn.cursor()
             timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
             context = dict(input_context or {})
+            context.setdefault(
+                "workflow",
+                "paper_paired_reference" if context.get("analyte_id") else "legacy_generic",
+            )
             if algorithm_version is None:
                 provenance = context.get("provenance") or {}
                 algorithm_version = (
                     context.get("model_version")
+                    or context.get("model_key")
                     or context.get("model_mode")
                     or provenance.get("model_version")
                     or provenance.get("model_mode")

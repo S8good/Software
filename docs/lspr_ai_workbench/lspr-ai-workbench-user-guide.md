@@ -9,19 +9,24 @@
 - 数据库浏览器中的 `Open in LSPR AI Workbench`
 - 数据库浏览器 `AI Runs` 标签页中重新打开已归档结果
 
-## 2. 单谱预测
+## 2. 配对参考 CEA / 分析物定量
 
-1. 打开工作台。
-2. 通过 `Import Spectrum...` 导入光谱，或从测量页 / 数据库浏览器预载入光谱。
-3. 选择 `Backend` 和 `Model`。
-4. 点击 `Run AI Prediction`。
+1. 打开工作台并选择分析物。
+2. 导入同一 chip/site 的 BSA 参考谱和分析物反应谱。
+3. 填写 `Chip ID` 和 `Site ID`，等待配对校验通过。
+4. 只有存在已验证模型的分析物才能点击 `Run Paired Prediction`。
 
 执行后可看到：
 
-- 浓度预测结果
-- 报告模式与报告文本
-- 峰位、缩放、偏移等对比指标
-- 输入谱与 AI 对比图
+- 浓度预测结果和单位
+- 配对质量控制状态
+- 模型版本、预处理版本和输入溯源
+
+当前注册的分析物为 CEA、NSE、Cyfra21-1、ProGRP、SCCA、p53、CA125、TSGF、GAGE-7 和 MAGE-A1。CEA 使用论文配对参考全光谱契约；其余分析物目前只可登记、校验和归档，预测模型尚未提供。
+
+当前仓库未包含论文训练数据或模型制品。未配置 `lspr_cea_model_artifact` 时，CEA 预测会明确报告模型制品不可用，不会回退到旧的单谱模型。
+
+旧版 `Single Spectrum` 结果仍可在数据库中读取，但会被标记为 `legacy_generic`，不能解释为本论文的 CEA 定量结果。
 
 ## 3. 谱线对比
 

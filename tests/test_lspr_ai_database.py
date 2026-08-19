@@ -99,3 +99,58 @@ def test_save_lspr_ai_prediction_derives_algorithm_version_and_preserves_provena
     context = json.loads(row[1])
     assert context["provenance"]["backend"] == "stub"
     assert context["provenance"]["metadata"]["source"] == "unit-test"
+
+
+def test_save_lspr_ai_prediction_marks_paired_context_and_preserves_pair_links(tmp_path):
+    db_path = tmp_path / "lspr-paired.db"
+    manager = _fresh_manager(db_path)
+    project_id = manager.find_or_create_project("Paired Demo")
+    experiment_id = manager.create_experiment(project_id, "Exp 1", "LSPR", "2025-01-01 10:00:00")
+
+    analysis_run_id = manager.save_lspr_ai_prediction(
+        experiment_id=experiment_id,
+        metrics={"predicted_concentration_ng_ml": 4.2},
+        input_context={
+            "analyte_id": "cea",
+            "chip_id": "chip-01",
+            "site_id": "site-03",
+            "reference_spectrum_id": 11,
+            "response_spectrum_id": 12,
+            "pairing_status": "validated",
+            "preprocessing_version": "cea-paper-v1",
+            "model_key": "cea_paired_reference_v1",
+            "model_version": "test-model",
+        },
+    )
+
+    context = json.loads(
+        manager.conn.execute(
+            "SELECT input_context FROM analysis_runs WHERE analysis_run_id = ?",
+            (analysis_run_id,),
+        ).fetchone()[0]
+    )
+    assert context["workflow"] == "paper_paired_reference"
+    assert context["analyte_id"] == "cea"
+    assert context["reference_spectrum_id"] == 11
+    assert context["response_spectrum_id"] == 12
+
+
+def test_save_lspr_ai_prediction_marks_old_single_spectrum_context_as_legacy(tmp_path):
+    db_path = tmp_path / "lspr-legacy.db"
+    manager = _fresh_manager(db_path)
+    project_id = manager.find_or_create_project("Legacy Demo")
+    experiment_id = manager.create_experiment(project_id, "Exp 1", "LSPR", "2025-01-01 10:00:00")
+
+    analysis_run_id = manager.save_lspr_ai_prediction(
+        experiment_id=experiment_id,
+        metrics={"predicted_concentration_ng_ml": 1.2},
+        input_context={"model_mode": "auto"},
+    )
+
+    context = json.loads(
+        manager.conn.execute(
+            "SELECT input_context FROM analysis_runs WHERE analysis_run_id = ?",
+            (analysis_run_id,),
+        ).fetchone()[0]
+    )
+    assert context["workflow"] == "legacy_generic"
