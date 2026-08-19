@@ -4,6 +4,20 @@ from enum import Enum
 import numpy as np
 from PyQt5.QtCore import QObject, QThread, Qt, pyqtSignal
 
+from nanosense.utils.logging_config import (
+    current_context,
+    get_logger,
+    logging_context,
+    new_correlation_id,
+)
+
+
+logger = get_logger(__name__)
+
+
+def _context_extra(session_id, correlation_id):
+    return {"session_id": session_id, "correlation_id": correlation_id}
+
 
 class AcquisitionState(str, Enum):
     IDLE = "idle"
@@ -43,6 +57,8 @@ class AcquisitionService(QObject):
         self._closed = False
         self._released = False
         self._batch_handle = None
+        self._session_id = "-"
+        self._correlation_id = None
 
     @property
     def state(self):
@@ -81,6 +97,16 @@ class AcquisitionService(QObject):
             if self._state is AcquisitionState.ERROR:
                 return False
             self._stop_event.clear()
+            self._session_id = current_context()["session_id"]
+            self._correlation_id = new_correlation_id("acq")
+            with logging_context(
+                session_id=self._session_id,
+                correlation_id=self._correlation_id,
+            ):
+                logger.info(
+                    "acquisition_started event=acquisition_started",
+                    extra=_context_extra(self._session_id, self._correlation_id),
+                )
             self._set_state(AcquisitionState.CONNECTING)
             self._thread = threading.Thread(
                 target=self._run,
@@ -95,31 +121,49 @@ class AcquisitionService(QObject):
 
     def _run(self):
         consecutive_errors = 0
-        try:
-            while not self._stop_event.is_set():
-                if self.controller is None:
-                    raise RuntimeError("No acquisition controller is configured")
-                try:
-                    wavelengths, spectrum = self.controller.get_spectrum()
-                    consecutive_errors = 0
-                    self.spectrum_ready.emit(
-                        np.asarray(wavelengths), np.asarray(spectrum)
-                    )
-                    if self.poll_interval_s:
-                        self._stop_event.wait(self.poll_interval_s)
-                except Exception as exc:
-                    consecutive_errors += 1
-                    if consecutive_errors >= self.max_consecutive_errors:
-                        self.error_occurred.emit(str(exc))
-                        self._set_state(AcquisitionState.ERROR)
-                        break
-                    if self.error_backoff_s:
-                        self._stop_event.wait(self.error_backoff_s)
-        except Exception as exc:
-            self.error_occurred.emit(str(exc))
-            self._set_state(AcquisitionState.ERROR)
-        finally:
-            self.finished.emit()
+        with logging_context(
+            session_id=self._session_id,
+            correlation_id=self._correlation_id,
+        ):
+            try:
+                while not self._stop_event.is_set():
+                    if self.controller is None:
+                        raise RuntimeError("No acquisition controller is configured")
+                    try:
+                        wavelengths, spectrum = self.controller.get_spectrum()
+                        consecutive_errors = 0
+                        self.spectrum_ready.emit(
+                            np.asarray(wavelengths), np.asarray(spectrum)
+                        )
+                        if self.poll_interval_s:
+                            self._stop_event.wait(self.poll_interval_s)
+                    except Exception as exc:
+                        consecutive_errors += 1
+                        if consecutive_errors >= self.max_consecutive_errors:
+                            logger.exception(
+                                "acquisition_failed event=acquisition_failed",
+                                extra=_context_extra(
+                                    self._session_id, self._correlation_id
+                                ),
+                            )
+                            self.error_occurred.emit(str(exc))
+                            self._set_state(AcquisitionState.ERROR)
+                            break
+                        if self.error_backoff_s:
+                            self._stop_event.wait(self.error_backoff_s)
+            except Exception as exc:
+                logger.exception(
+                    "acquisition_failed event=acquisition_failed",
+                    extra=_context_extra(self._session_id, self._correlation_id),
+                )
+                self.error_occurred.emit(str(exc))
+                self._set_state(AcquisitionState.ERROR)
+            finally:
+                logger.info(
+                    "acquisition_finished event=acquisition_finished",
+                    extra=_context_extra(self._session_id, self._correlation_id),
+                )
+                self.finished.emit()
 
     def wait(self, timeout_s=0.5):
         thread = self._thread
@@ -134,6 +178,14 @@ class AcquisitionService(QObject):
                 if self._state is AcquisitionState.STOPPING:
                     self._set_state(AcquisitionState.IDLE)
                 return True
+            with logging_context(
+                session_id=self._session_id,
+                correlation_id=self._correlation_id,
+            ):
+                logger.info(
+                    "acquisition_stop_requested event=acquisition_stop_requested",
+                    extra=_context_extra(self._session_id, self._correlation_id),
+                )
             self._set_state(AcquisitionState.STOPPING)
             self._stop_event.set()
         stopped = self.wait(timeout_s)
@@ -193,6 +245,16 @@ class AcquisitionService(QObject):
         with self._lock:
             if self._closed or self.is_running:
                 return self._batch_handle
+            self._session_id = current_context()["session_id"]
+            self._correlation_id = new_correlation_id("batch")
+            with logging_context(
+                session_id=self._session_id,
+                correlation_id=self._correlation_id,
+            ):
+                logger.info(
+                    "batch_started event=batch_started",
+                    extra=_context_extra(self._session_id, self._correlation_id),
+                )
             self._set_state(AcquisitionState.CONNECTING)
             self._batch_handle = BatchAcquisitionHandle(worker, parent=self)
             self._batch_handle.state_changed.connect(
@@ -215,6 +277,15 @@ class AcquisitionService(QObject):
             self._set_state(AcquisitionState.ERROR)
         elif self._state is not AcquisitionState.ERROR:
             self._set_state(AcquisitionState.IDLE)
+        with logging_context(
+            session_id=self._session_id,
+            correlation_id=self._correlation_id,
+        ):
+            logger.info(
+                "batch_finished event=batch_finished status=%s",
+                getattr(handle.worker, "run_status", "unknown"),
+                extra=_context_extra(self._session_id, self._correlation_id),
+            )
         self.finished.emit()
 
 

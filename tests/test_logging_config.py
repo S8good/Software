@@ -79,3 +79,58 @@ def test_launcher_uses_logging_setup_and_exception_logger():
     assert "new_session_id" in source
     assert "logger.exception" in source
     assert "with open(crash_log" not in source
+
+
+def test_acquisition_logs_have_correlation_context(caplog):
+    import time
+
+    from nanosense.core.acquisition import AcquisitionService
+
+    class Controller:
+        def get_spectrum(self):
+            return [500.0, 600.0], [1.0, 2.0]
+
+    service = AcquisitionService(Controller(), poll_interval_s=0.001)
+    with caplog.at_level(logging.INFO):
+        assert service.start() is True
+        time.sleep(0.02)
+        assert service.stop(timeout_s=1.0) is True
+
+    records = [
+        record for record in caplog.records
+        if record.name == "nanosense.core.acquisition"
+    ]
+    assert records
+    assert any(record.correlation_id != "-" for record in records)
+    assert any("acquisition_started" in record.getMessage() for record in records)
+
+
+def test_lspr_logs_have_correlation_context(caplog):
+    from nanosense.ml.lspr_ai_service import LSPRAIService
+    from nanosense.ml.lspr_backend_protocol import PredictionResponse
+
+    class Backend:
+        def predict_single(self, request):
+            return PredictionResponse(
+                ok=True,
+                backend="test",
+                model_mode="auto",
+                predicted_concentration_ng_ml=1.0,
+                report_mode="quantitative",
+                reported_text="1.0 ng/ml",
+                uloq_ng_ml=None,
+                super_quant_bin=None,
+                metrics={},
+            )
+
+    service = LSPRAIService(backend=Backend())
+    with caplog.at_level(logging.INFO):
+        service.predict_single_spectrum([500.0, 501.0, 502.0], [1.0, 2.0, 3.0])
+
+    records = [
+        record for record in caplog.records
+        if record.name == "nanosense.ml.lspr_ai_service"
+    ]
+    assert records
+    assert any(record.correlation_id != "-" for record in records)
+    assert any("lspr_started" in record.getMessage() for record in records)

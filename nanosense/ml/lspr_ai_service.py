@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import wraps
 import logging
 from pathlib import Path
+import time
 from typing import Any, Dict, List, Optional
 
 from .lspr_backend_factory import create_lspr_backend
@@ -21,9 +23,59 @@ from .lspr_backend_protocol import (
     validate_spectrum,
 )
 from .lspr_master_bridge import LSPRMasterBridge
+from nanosense.utils.logging_config import (
+    current_context,
+    get_logger,
+    logging_context,
+    new_correlation_id,
+)
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+
+def _context_extra(session_id, correlation_id):
+    return {"session_id": session_id, "correlation_id": correlation_id}
+
+
+def _log_operation(operation):
+    def decorator(function):
+        @wraps(function)
+        def wrapped(self, *args, **kwargs):
+            session_id = current_context()["session_id"]
+            correlation_id = new_correlation_id("lspr")
+            extra = _context_extra(session_id, correlation_id)
+            started = time.monotonic()
+            with logging_context(
+                session_id=session_id,
+                correlation_id=correlation_id,
+            ):
+                logger.info(
+                    "lspr_started event=lspr_started operation=%s",
+                    operation,
+                    extra=extra,
+                )
+                try:
+                    result = function(self, *args, **kwargs)
+                except Exception:
+                    logger.exception(
+                        "lspr_failed event=lspr_failed operation=%s",
+                        operation,
+                        extra=extra,
+                    )
+                    raise
+                finally:
+                    logger.info(
+                        "lspr_finished event=lspr_finished operation=%s duration_ms=%.1f",
+                        operation,
+                        (time.monotonic() - started) * 1000.0,
+                        extra=extra,
+                    )
+            return result
+
+        return wrapped
+
+    return decorator
 
 
 class LSPRAIServiceError(RuntimeError):
@@ -112,6 +164,7 @@ class LSPRAIService:
             "metadata": dict(metadata or {}),
         }
 
+    @_log_operation("discover_model_modes")
     def discover_model_modes(self) -> List[str]:
         root = self.config.get('lspr_master_root')
         try:
@@ -120,6 +173,7 @@ class LSPRAIService:
         except Exception:
             return ['auto']
 
+    @_log_operation("predict_single_spectrum")
     def predict_single_spectrum(self, wavelengths: List[float], intensities: List[float], model_mode: str = 'auto', metadata: Optional[Dict[str, Any]] = None) -> LSPRPredictionResult:
         self._validate_spectrum(wavelengths, intensities)
         response: PredictionResponse = self.backend.predict_single(
@@ -138,6 +192,7 @@ class LSPRAIService:
             provenance=self._build_provenance(response.model_mode, response.backend, metadata),
         )
 
+    @_log_operation("build_spectrum_comparison")
     def build_spectrum_comparison(self, wavelengths: List[float], intensities: List[float], model_mode: str = 'auto', metadata: Optional[Dict[str, Any]] = None) -> LSPRSpectrumComparisonResult:
         self._validate_spectrum(wavelengths, intensities)
         response: ComparisonResponse = self.backend.build_comparison(
@@ -156,6 +211,7 @@ class LSPRAIService:
             provenance=self._build_provenance(response.model_mode, response.backend, metadata),
         )
 
+    @_log_operation("build_digital_twin_context")
     def build_digital_twin_context(self, concentration_ng_ml: float, experimental_wavelengths: Optional[List[float]] = None, experimental_intensities: Optional[List[float]] = None, model_mode: str = 'auto', metadata: Optional[Dict[str, Any]] = None) -> LSPRDigitalTwinResult:
         self._validate_concentration(concentration_ng_ml)
         if (experimental_wavelengths is None) != (experimental_intensities is None):
@@ -187,6 +243,7 @@ class LSPRAIService:
             provenance=self._build_provenance(model_mode, response.backend, metadata),
         )
 
+    @_log_operation("compare_models")
     def compare_models(self, wavelengths: List[float], intensities: List[float], model_modes: Optional[List[str]] = None, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         modes = list(model_modes or self.discover_model_modes())
         rows = []
@@ -204,6 +261,7 @@ class LSPRAIService:
             comparisons.append(comparison)
         return {'rows': rows, 'comparisons': comparisons}
 
+    @_log_operation("predict_batch")
     def predict_batch(self, items: List[Dict[str, Any]], model_mode: str = 'auto', metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         if not items:
             raise LSPRAIServiceError("input_invalid", "batch items must not be empty", {"reason": "empty_batch"})
