@@ -30,6 +30,7 @@ from .lspr_batch_prediction_widget import LSPRBatchPredictionWidget
 from .lspr_digital_twin_widget import LSPRDigitalTwinWidget
 from .lspr_model_comparison_widget import LSPRModelComparisonWidget
 from .lspr_result_summary_widget import LSPRResultSummaryWidget
+from .lspr_paired_prediction_widget import LSPRPairedPredictionWidget
 from .lspr_spectrum_comparison_widget import LSPRSpectrumComparisonWidget
 from ..ml.lspr_ai_service import LSPRAIService, LSPRSpectrumComparisonResult
 
@@ -66,6 +67,8 @@ class LSPRAIAnalysisWindow(QMainWindow):
             self.model_mode_combo.setCurrentIndex(mode_index)
         if hasattr(self, "batch_prediction_tab"):
             self.batch_prediction_tab.config = self.config
+        if hasattr(self, "paired_prediction_tab"):
+            self.paired_prediction_tab.config = self.config
 
     def _build_ui(self):
         central = QWidget(self)
@@ -183,7 +186,11 @@ class LSPRAIAnalysisWindow(QMainWindow):
         self.digital_twin_tab = LSPRDigitalTwinWidget(self._get_service, parent=self)
         self.model_comparison_tab = LSPRModelComparisonWidget(self._get_service, self._get_current_spectrum, parent=self)
         self.batch_prediction_tab = LSPRBatchPredictionWidget(self._get_service, config=self.config, parent=self)
+        self.paired_prediction_tab = LSPRPairedPredictionWidget(
+            self._get_service, config=self.config, parent=self
+        )
 
+        self.content_tabs.addTab(self.paired_prediction_tab, "Paired Quantification")
         self.content_tabs.addTab(analysis_tab, "Analysis")
         self.content_tabs.addTab(self.digital_twin_tab, "Digital Twin")
         self.content_tabs.addTab(self.model_comparison_tab, "Model Comparison")
@@ -218,6 +225,9 @@ class LSPRAIAnalysisWindow(QMainWindow):
             self.spectra_list_widget.setCurrentRow(0)
 
     def set_input_spectrum(self, wavelengths, intensities, metadata=None):
+        self.paired_prediction_tab.set_response_spectrum(
+            wavelengths, intensities, metadata=metadata
+        )
         self._add_spectrum(
             wavelengths,
             intensities,
@@ -225,6 +235,29 @@ class LSPRAIAnalysisWindow(QMainWindow):
             metadata=metadata or {},
         )
         self.spectra_list_widget.setCurrentRow(self.spectra_list_widget.count() - 1)
+
+    def set_paired_spectra(
+        self,
+        reference_wavelengths,
+        reference_intensities,
+        response_wavelengths,
+        response_intensities,
+        chip_id,
+        site_id,
+        analyte_id="cea",
+        metadata=None,
+    ):
+        self.paired_prediction_tab.set_paired_spectra(
+            reference_wavelengths,
+            reference_intensities,
+            response_wavelengths,
+            response_intensities,
+            chip_id=chip_id,
+            site_id=site_id,
+            analyte_id=analyte_id,
+            metadata=metadata,
+        )
+        self.content_tabs.setCurrentWidget(self.paired_prediction_tab)
 
     def _add_spectrum(self, wavelengths, intensities, name, metadata=None):
         key = f"{name}___{len(self.spectra)}"

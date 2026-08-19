@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QMainWindow, QTabWidget
 
-from .lspr_single_prediction_widget import LSPRSinglePredictionWidget
+from .lspr_paired_prediction_widget import LSPRPairedPredictionWidget
 from .lspr_spectrum_comparison_widget import LSPRSpectrumComparisonWidget
 from ..ml.lspr_ai_service import LSPRAIService
 
@@ -17,11 +17,14 @@ class LSPRAIWorkbench(QMainWindow):
         self.tab_widget = QTabWidget(self)
         self.setCentralWidget(self.tab_widget)
 
-        self.single_spectrum_tab = LSPRSinglePredictionWidget(self._get_service, config=self.config, parent=self)
+        self.paired_spectrum_tab = LSPRPairedPredictionWidget(
+            self._get_service, config=self.config, parent=self
+        )
+        self.single_spectrum_tab = self.paired_spectrum_tab
         self.spectrum_comparison_tab = LSPRSpectrumComparisonWidget(parent=self)
-        self.single_spectrum_tab.comparison_ready.connect(self.spectrum_comparison_tab.set_comparison_result)
+        self.paired_spectrum_tab.prediction_ready.connect(self._handle_prediction)
 
-        self.tab_widget.addTab(self.single_spectrum_tab, "Single Spectrum")
+        self.tab_widget.addTab(self.paired_spectrum_tab, "Paired Quantification")
         self.tab_widget.addTab(self.spectrum_comparison_tab, "Spectrum Comparison")
 
     def _get_service(self):
@@ -32,3 +35,6 @@ class LSPRAIWorkbench(QMainWindow):
     def set_input_spectrum(self, wavelengths, intensities, metadata=None):
         self.single_spectrum_tab.set_input_spectrum(wavelengths, intensities, metadata=metadata)
         self.tab_widget.setCurrentWidget(self.single_spectrum_tab)
+
+    def _handle_prediction(self, result):
+        del result
