@@ -180,6 +180,38 @@ def test_inprocess_backend_health_check_reports_import_failure(monkeypatch):
     assert result.error.code == "inprocess_unavailable"
 
 
+def test_inprocess_health_check_exposes_bridge_path_diagnostics(tmp_path):
+    backend = InProcessLSPRBackend(config={"lspr_master_root": str(tmp_path / "missing")})
+
+    result = backend.health_check()
+
+    assert result.ok is False
+    assert result.details["candidate_paths"]
+    assert result.details["resolution_source"] == "explicit"
+
+
+def test_subprocess_health_check_exposes_runner_and_python_diagnostics(monkeypatch, tmp_path):
+    runner_path = tmp_path / "runner.py"
+    python_path = tmp_path / "python.exe"
+    backend = SubprocessLSPRBackend(
+        config={
+            "lspr_runner_path": str(runner_path),
+            "lspr_subprocess_python": str(python_path),
+        }
+    )
+    monkeypatch.setattr(backend, "_invoke_runner", lambda command, payload: {
+        "ok": True,
+        "backend": "subprocess",
+        "details": {},
+    })
+
+    result = backend.health_check()
+
+    assert result.ok is True
+    assert result.details["runner_path"] == str(runner_path.resolve())
+    assert result.details["python_executable"] == str(python_path.resolve())
+
+
 def test_predict_single_request_can_be_serialized_to_json_compatible_payload():
     request = PredictSingleRequest(
         wavelengths=[500.0, 501.0, 502.0],

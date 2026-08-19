@@ -49,10 +49,14 @@ class InProcessLSPRBackend(LSPRBackend):
             bridge.import_module('src.core.digital_twin_service')
             return HealthCheckResponse(ok=True, backend='inprocess', details=diagnostics)
         except Exception as exc:
+            details = {"lspr_backend_mode": "inprocess"}
+            bridge_diagnostics = getattr(exc, "diagnostics", None)
+            if isinstance(bridge_diagnostics, dict):
+                details.update(bridge_diagnostics)
             return HealthCheckResponse(
                 ok=False,
                 backend='inprocess',
-                details={'lspr_backend_mode': 'inprocess'},
+                details=details,
                 error=ErrorResponse(code='inprocess_unavailable', message=str(exc)),
             )
 

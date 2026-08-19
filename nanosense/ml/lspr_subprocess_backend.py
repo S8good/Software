@@ -37,13 +37,23 @@ class SubprocessLSPRBackend(LSPRBackend):
             return None
         return Path(master_root).expanduser().resolve() / 'scripts' / 'lspr_bridge_runner.py'
 
+    def _runner_diagnostics(self) -> Dict[str, Optional[str]]:
+        runner_path = self._resolve_runner_path()
+        python_path = Path(self.python_executable).expanduser().resolve()
+        return {
+            'runner_path': str(runner_path) if runner_path else None,
+            'python_executable': str(python_path),
+        }
+
     def _invoke_runner(self, command: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         runner_path = self._resolve_runner_path()
         if runner_path is None or not runner_path.exists():
+            details = {'command': command}
+            details.update(self._runner_diagnostics())
             return {
                 'ok': False,
                 'backend': 'subprocess',
-                'details': {'command': command, 'runner_path': str(runner_path) if runner_path else None},
+                'details': details,
                 'error': {'code': 'runner_missing', 'message': 'subprocess runner does not exist'},
             }
         env = self._build_subprocess_env()
@@ -58,24 +68,27 @@ class SubprocessLSPRBackend(LSPRBackend):
             env=env,
         )
         if proc.returncode != 0:
+            details = {
+                'command': command,
+                'stderr': proc.stderr.strip(),
+                'returncode': proc.returncode,
+            }
+            details.update(self._runner_diagnostics())
             return {
                 'ok': False,
                 'backend': 'subprocess',
-                'details': {
-                    'command': command,
-                    'runner_path': str(runner_path),
-                    'stderr': proc.stderr.strip(),
-                    'returncode': proc.returncode,
-                },
+                'details': details,
                 'error': {'code': 'runner_failed', 'message': proc.stderr.strip() or 'subprocess execution failed'},
             }
         try:
             return json.loads(proc.stdout or '{}')
         except json.JSONDecodeError:
+            details = {'command': command, 'stdout': proc.stdout}
+            details.update(self._runner_diagnostics())
             return {
                 'ok': False,
                 'backend': 'subprocess',
-                'details': {'command': command, 'runner_path': str(runner_path), 'stdout': proc.stdout},
+                'details': details,
                 'error': {'code': 'invalid_json', 'message': 'subprocess returned invalid JSON'},
             }
 
@@ -95,10 +108,12 @@ class SubprocessLSPRBackend(LSPRBackend):
     def health_check(self) -> HealthCheckResponse:
         result = self._invoke_runner('health', {})
         error = result.get('error')
+        details = dict(result.get('details') or {})
+        details.update(self._runner_diagnostics())
         return HealthCheckResponse(
             ok=bool(result.get('ok', False)),
             backend='subprocess',
-            details=result.get('details', {}),
+            details=details,
             error=ErrorResponse(**error) if isinstance(error, dict) else None,
         )
 
