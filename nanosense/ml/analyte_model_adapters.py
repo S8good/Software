@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
+import subprocess
+import sys
 from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional
 
 from .analyte_registry import (
@@ -115,6 +118,87 @@ class UnavailableModelAdapter(AnalyteModelAdapter):
         )
 
 
+class SubprocessCEAPredictor:
+    """Invoke the optional py39 CEA runner through a small JSON protocol."""
+
+    def __init__(self, config: Mapping[str, Any]):
+        self.config = dict(config)
+        self.runner_path = Path(str(self.config.get("lspr_cea_runner_path", ""))).expanduser()
+        self.python_path = str(self.config.get("lspr_cea_runner_python", sys.executable))
+        self.timeout_seconds = float(self.config.get("lspr_cea_runner_timeout", 30.0))
+
+    def __call__(
+        self, paired_input: PairedSpectrumInput, options: Mapping[str, Any]
+    ) -> AnalytePredictionResult:
+        request = {
+            "operation": "predict_pair",
+            "artifact": str(self.config.get("lspr_cea_model_artifact", "")),
+            "input": paired_input.to_payload(),
+            "options": dict(options or {}),
+        }
+        try:
+            completed = subprocess.run(
+                [self.python_path, str(self.runner_path)],
+                input=json.dumps(request, ensure_ascii=False),
+                text=True,
+                capture_output=True,
+                timeout=self.timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise AnalyteModelError(
+                "request_timeout",
+                "The CEA model runner timed out.",
+                {"timeout_seconds": self.timeout_seconds},
+            ) from exc
+        except OSError as exc:
+            raise AnalyteModelError(
+                "external_process_error",
+                "The CEA model runner could not be started.",
+                {"exception_type": type(exc).__name__, "runner": str(self.runner_path)},
+            ) from exc
+        if completed.returncode != 0:
+            raise AnalyteModelError(
+                "external_process_error",
+                "The CEA model runner returned a non-zero exit code.",
+                {
+                    "returncode": completed.returncode,
+                    "stderr": completed.stderr.strip(),
+                    "runner": str(self.runner_path),
+                },
+            )
+        try:
+            payload = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise AnalyteModelError(
+                "external_process_error",
+                "The CEA model runner returned invalid JSON.",
+                {"stdout": completed.stdout[-1000:]},
+            ) from exc
+        if not isinstance(payload, Mapping) or payload.get("ok") is not True:
+            error = payload.get("error", {}) if isinstance(payload, Mapping) else {}
+            raise AnalyteModelError(
+                str(error.get("code", "model_error")),
+                str(error.get("message", "The CEA model runner rejected the request.")),
+                error.get("details", {}),
+            )
+        result = payload.get("result")
+        if not isinstance(result, Mapping):
+            raise AnalyteModelError(
+                "model_result_invalid",
+                "The CEA model runner returned no result object.",
+            )
+        return AnalytePredictionResult(
+            analyte_id=str(result.get("analyte_id", "")),
+            predicted_concentration_ng_ml=result.get("predicted_concentration_ng_ml"),
+            predicted_log10_concentration=result.get("predicted_log10_concentration"),
+            target_unit=str(result.get("target_unit", "ng/mL")),
+            metrics=dict(result.get("metrics", {})),
+            qc=dict(result.get("qc", {})),
+            provenance=dict(result.get("provenance", {})),
+        )
+
+
 class CEAPairedModelAdapter(AnalyteModelAdapter):
     """Paper-aligned CEA adapter shell.
 
@@ -130,6 +214,8 @@ class CEAPairedModelAdapter(AnalyteModelAdapter):
     ):
         self.config = dict(config or {})
         self.predictor = predictor
+        if self.predictor is None and self.config.get("lspr_cea_runner_path"):
+            self.predictor = SubprocessCEAPredictor(self.config)
 
     def model_metadata(self) -> AnalyteModelMetadata:
         return AnalyteModelMetadata(
@@ -159,6 +245,24 @@ class CEAPairedModelAdapter(AnalyteModelAdapter):
                 code="model_artifact_unavailable",
                 message="The configured CEA model artifact does not exist.",
                 details={"artifact": str(artifact)},
+            )
+        if not bool(self.config.get("lspr_cea_model_enabled", False)):
+            return AdapterHealth(
+                ok=False,
+                code="model_disabled",
+                message="The CEA candidate model is disabled by configuration.",
+                details={
+                    "required_config": "lspr_cea_model_enabled",
+                    "artifact": str(artifact),
+                },
+            )
+        runner_value = str(self.config.get("lspr_cea_runner_path", "")).strip()
+        if runner_value and not Path(runner_value).expanduser().is_file():
+            return AdapterHealth(
+                ok=False,
+                code="model_runner_unavailable",
+                message="The configured CEA model runner does not exist.",
+                details={"runner": runner_value},
             )
         if self.predictor is None:
             return AdapterHealth(

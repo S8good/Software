@@ -14,6 +14,11 @@ def test_default_settings_include_lspr_ai_workbench_keys():
     assert settings["lspr_master_root"] == ""
     assert settings["lspr_backend_mode"] == "auto"
     assert settings["lspr_subprocess_python"] == ""
+    assert settings["lspr_cea_model_enabled"] is False
+    assert settings["lspr_cea_model_artifact"] == ""
+    assert settings["lspr_cea_runner_path"] == ""
+    assert settings["lspr_cea_runner_python"] == ""
+    assert settings["lspr_cea_runner_timeout"] == 30.0
     assert settings["lspr_default_artifact_dir"] == ""
     assert settings["lspr_enable_digital_twin_overlay"] is True
     assert settings["lspr_batch_export_dir"] == ""
@@ -25,6 +30,11 @@ def test_settings_dialog_contains_lspr_ai_controls():
     assert "LSPR AI" in settings_dialog_source
     assert "lspr_master_root" in settings_dialog_source
     assert "lspr_subprocess_python" in settings_dialog_source
+    assert "lspr_cea_model_enabled" in settings_dialog_source
+    assert "lspr_cea_model_artifact" in settings_dialog_source
+    assert "lspr_cea_runner_path" in settings_dialog_source
+    assert "lspr_cea_runner_python" in settings_dialog_source
+    assert "lspr_cea_runner_timeout" in settings_dialog_source
     assert "lspr_test_connection_button" in settings_dialog_source
     assert "lspr_default_artifact_dir" in settings_dialog_source
     assert "lspr_batch_export_dir" in settings_dialog_source

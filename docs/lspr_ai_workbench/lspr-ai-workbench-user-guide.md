@@ -24,7 +24,23 @@
 
 当前注册的分析物为 CEA、NSE、Cyfra21-1、ProGRP、SCCA、p53、CA125、TSGF、GAGE-7 和 MAGE-A1。CEA 使用论文配对参考全光谱契约；其余分析物目前只可登记、校验和归档，预测模型尚未提供。
 
-当前仓库未包含论文训练数据或模型制品。未配置 `lspr_cea_model_artifact` 时，CEA 预测会明确报告模型制品不可用，不会回退到旧的单谱模型。
+当前仓库不内置论文模型权重。CEA 候选模型需要同时配置 `lspr_cea_model_artifact` 和
+`lspr_cea_model_enabled=true` 才会进入 runner 检查；默认保持禁用。若没有兼容的
+外部 runner，系统报告 `model_runner_unavailable`，不会回退到旧的单谱模型或生成伪预测。
+
+候选 runner 使用 JSON subprocess 协议，推荐配置以下字段（Windows 下优先使用
+`CEA_TRAINING_WORKSPACE` 目录联接路径，避免 PyTorch 中文路径兼容问题）：
+
+```text
+lspr_cea_model_artifact=C:\path\to\CEA_TRAINING_WORKSPACE\exports\cea_paired_reference_v1_candidate\manifest.json
+lspr_cea_model_enabled=false
+lspr_cea_runner_path=C:\path\to\CEA_TRAINING_WORKSPACE\cea_paired_runner.py
+lspr_cea_runner_python=C:\path\to\py39\python.exe
+lspr_cea_runner_timeout=30
+```
+
+输入的配对元数据必须包含 `physical_features` 三元素数组；缺少该字段时 runner
+拒绝预测。
 
 旧版 `Single Spectrum` 结果仍可在数据库中读取，但会被标记为 `legacy_generic`，不能解释为本论文的 CEA 定量结果。
 

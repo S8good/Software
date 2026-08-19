@@ -117,6 +117,47 @@ class SettingsDialog(QDialog):
         self.lspr_subprocess_python_label = QLabel()
         lspr_layout.addRow(self.lspr_subprocess_python_label, python_layout)
 
+        self.lspr_cea_model_enabled_checkbox = QCheckBox()
+        self.lspr_cea_model_enabled_label = QLabel()
+        lspr_layout.addRow(
+            self.lspr_cea_model_enabled_label,
+            self.lspr_cea_model_enabled_checkbox,
+        )
+
+        self.lspr_cea_model_artifact_edit = QLineEdit()
+        self.lspr_cea_model_artifact_browse_btn = QPushButton()
+        cea_artifact_layout = QHBoxLayout()
+        cea_artifact_layout.addWidget(self.lspr_cea_model_artifact_edit)
+        cea_artifact_layout.addWidget(self.lspr_cea_model_artifact_browse_btn)
+        self.lspr_cea_model_artifact_label = QLabel()
+        lspr_layout.addRow(self.lspr_cea_model_artifact_label, cea_artifact_layout)
+
+        self.lspr_cea_runner_path_edit = QLineEdit()
+        self.lspr_cea_runner_browse_btn = QPushButton()
+        cea_runner_layout = QHBoxLayout()
+        cea_runner_layout.addWidget(self.lspr_cea_runner_path_edit)
+        cea_runner_layout.addWidget(self.lspr_cea_runner_browse_btn)
+        self.lspr_cea_runner_path_label = QLabel()
+        lspr_layout.addRow(self.lspr_cea_runner_path_label, cea_runner_layout)
+
+        self.lspr_cea_runner_python_edit = QLineEdit()
+        self.lspr_cea_runner_python_browse_btn = QPushButton()
+        cea_python_layout = QHBoxLayout()
+        cea_python_layout.addWidget(self.lspr_cea_runner_python_edit)
+        cea_python_layout.addWidget(self.lspr_cea_runner_python_browse_btn)
+        self.lspr_cea_runner_python_label = QLabel()
+        lspr_layout.addRow(self.lspr_cea_runner_python_label, cea_python_layout)
+
+        self.lspr_cea_runner_timeout_spinbox = QDoubleSpinBox()
+        self.lspr_cea_runner_timeout_spinbox.setDecimals(1)
+        self.lspr_cea_runner_timeout_spinbox.setRange(1.0, 300.0)
+        self.lspr_cea_runner_timeout_spinbox.setSingleStep(1.0)
+        self.lspr_cea_runner_timeout_label = QLabel()
+        lspr_layout.addRow(
+            self.lspr_cea_runner_timeout_label,
+            self.lspr_cea_runner_timeout_spinbox,
+        )
+
         self.lspr_test_connection_button = QPushButton()
         lspr_layout.addRow(self.lspr_test_connection_button)
 
@@ -160,6 +201,15 @@ class SettingsDialog(QDialog):
         self.lspr_master_root_browse_btn.clicked.connect(lambda: self._browse_folder(self.lspr_master_root_edit))
         self.lspr_subprocess_python_browse_btn.clicked.connect(
             lambda: self._browse_file(self.lspr_subprocess_python_edit)
+        )
+        self.lspr_cea_model_artifact_browse_btn.clicked.connect(
+            lambda: self._browse_file(self.lspr_cea_model_artifact_edit)
+        )
+        self.lspr_cea_runner_browse_btn.clicked.connect(
+            lambda: self._browse_file(self.lspr_cea_runner_path_edit)
+        )
+        self.lspr_cea_runner_python_browse_btn.clicked.connect(
+            lambda: self._browse_file(self.lspr_cea_runner_python_edit)
         )
         self.lspr_test_connection_button.clicked.connect(self._test_lspr_connection)
         self.lspr_default_artifact_dir_browse_btn.clicked.connect(
@@ -207,6 +257,14 @@ class SettingsDialog(QDialog):
         self.lspr_master_root_browse_btn.setText(browse_text)
         self.lspr_subprocess_python_label.setText(self.tr("Subprocess Python Interpreter:"))
         self.lspr_subprocess_python_browse_btn.setText(browse_text)
+        self.lspr_cea_model_enabled_label.setText(self.tr("Enable CEA Candidate Model:"))
+        self.lspr_cea_model_artifact_label.setText(self.tr("CEA Model Manifest:"))
+        self.lspr_cea_runner_path_label.setText(self.tr("CEA Runner Script:"))
+        self.lspr_cea_runner_python_label.setText(self.tr("CEA Runner Python:"))
+        self.lspr_cea_runner_timeout_label.setText(self.tr("CEA Runner Timeout (s):"))
+        self.lspr_cea_model_artifact_browse_btn.setText(browse_text)
+        self.lspr_cea_runner_browse_btn.setText(browse_text)
+        self.lspr_cea_runner_python_browse_btn.setText(browse_text)
         self.lspr_test_connection_button.setText(self.tr("Test LSPR Connection"))
         self.lspr_default_artifact_dir_browse_btn.setText(browse_text)
         self.lspr_batch_export_dir_browse_btn.setText(browse_text)
@@ -309,6 +367,21 @@ class SettingsDialog(QDialog):
         if mode_index >= 0:
             self.lspr_backend_mode_combo.setCurrentIndex(mode_index)
         self.lspr_subprocess_python_edit.setText(self.settings.get("lspr_subprocess_python", ""))
+        self.lspr_cea_model_enabled_checkbox.setChecked(
+            bool(self.settings.get("lspr_cea_model_enabled", False))
+        )
+        self.lspr_cea_model_artifact_edit.setText(
+            self.settings.get("lspr_cea_model_artifact", "")
+        )
+        self.lspr_cea_runner_path_edit.setText(
+            self.settings.get("lspr_cea_runner_path", "")
+        )
+        self.lspr_cea_runner_python_edit.setText(
+            self.settings.get("lspr_cea_runner_python", "")
+        )
+        self.lspr_cea_runner_timeout_spinbox.setValue(
+            float(self.settings.get("lspr_cea_runner_timeout", 30.0))
+        )
         self.lspr_default_artifact_dir_edit.setText(self.settings.get("lspr_default_artifact_dir", ""))
         self.lspr_batch_export_dir_edit.setText(self.settings.get("lspr_batch_export_dir", ""))
         self.lspr_enable_digital_twin_overlay_checkbox.setChecked(
@@ -325,6 +398,13 @@ class SettingsDialog(QDialog):
         self.settings["lspr_master_root"] = self.lspr_master_root_edit.text()
         self.settings["lspr_backend_mode"] = self.lspr_backend_mode_combo.currentData()
         self.settings["lspr_subprocess_python"] = self.lspr_subprocess_python_edit.text()
+        self.settings["lspr_cea_model_enabled"] = (
+            self.lspr_cea_model_enabled_checkbox.isChecked()
+        )
+        self.settings["lspr_cea_model_artifact"] = self.lspr_cea_model_artifact_edit.text().strip()
+        self.settings["lspr_cea_runner_path"] = self.lspr_cea_runner_path_edit.text().strip()
+        self.settings["lspr_cea_runner_python"] = self.lspr_cea_runner_python_edit.text().strip()
+        self.settings["lspr_cea_runner_timeout"] = self.lspr_cea_runner_timeout_spinbox.value()
         self.settings.pop("lspr_default_model_mode", None)
         self.settings.pop("backend_mode", None)
         self.settings["lspr_default_artifact_dir"] = self.lspr_default_artifact_dir_edit.text()

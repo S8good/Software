@@ -41,6 +41,11 @@ def test_default_settings_use_the_canonical_backend_key():
 
     assert settings["lspr_backend_mode"] == "auto"
     assert settings["lspr_subprocess_python"] == ""
+    assert settings["lspr_cea_model_enabled"] is False
+    assert settings["lspr_cea_model_artifact"] == ""
+    assert settings["lspr_cea_runner_path"] == ""
+    assert settings["lspr_cea_runner_python"] == ""
+    assert settings["lspr_cea_runner_timeout"] == 30.0
     assert "lspr_default_model_mode" not in settings
     assert "backend_mode" not in settings
 
@@ -149,6 +154,35 @@ def test_settings_dialog_reads_and_saves_subprocess_python():
         dialog._save_and_accept()
 
         assert dialog.get_settings()["lspr_subprocess_python"] == "C:/Python/py39.exe"
+    finally:
+        dialog.close()
+
+
+def test_settings_dialog_reads_and_saves_cea_runner_configuration():
+    qapp()
+    dialog = SettingsDialog(
+        {
+            "lspr_cea_model_enabled": True,
+            "lspr_cea_model_artifact": "C:/models/manifest.json",
+            "lspr_cea_runner_path": "C:/models/runner.py",
+            "lspr_cea_runner_python": "C:/Python/py39.exe",
+            "lspr_cea_runner_timeout": 45.0,
+        }
+    )
+
+    try:
+        assert dialog.lspr_cea_model_enabled_checkbox.isChecked() is True
+        assert dialog.lspr_cea_model_artifact_edit.text() == "C:/models/manifest.json"
+        assert dialog.lspr_cea_runner_path_edit.text() == "C:/models/runner.py"
+        assert dialog.lspr_cea_runner_python_edit.text() == "C:/Python/py39.exe"
+        assert dialog.lspr_cea_runner_timeout_spinbox.value() == 45.0
+
+        dialog.lspr_cea_model_enabled_checkbox.setChecked(False)
+        dialog.lspr_cea_runner_timeout_spinbox.setValue(60.0)
+        dialog._save_and_accept()
+        settings = dialog.get_settings()
+        assert settings["lspr_cea_model_enabled"] is False
+        assert settings["lspr_cea_runner_timeout"] == 60.0
     finally:
         dialog.close()
 
