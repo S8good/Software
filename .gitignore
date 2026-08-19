@@ -1,0 +1,46 @@
+# Bytecode caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test, type-checker, and coverage caches
+.pytest_cache/
+.pytest_tmp/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local databases / generated data
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Runtime logs
+logs/
+*.log
+
+# Local environments and secrets
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+
+# IDE and operating-system state
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Build and package artifacts
+build/
+dist/
+*.egg-info/
+
+# Generated reports and temporary exports
+docs/reports/
+temp_utf8.txt
