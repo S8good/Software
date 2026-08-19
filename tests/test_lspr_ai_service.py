@@ -16,6 +16,8 @@ from nanosense.ml.lspr_backend_protocol import (
     ErrorResponse,
     PredictionResponse,
 )
+from nanosense.ml.analyte_model_adapters import AnalytePredictionResult
+from nanosense.ml.paired_spectrum import PairedSpectrumInput, Spectrum
 
 
 class _StubBackend:
@@ -272,3 +274,53 @@ def test_service_predict_batch_returns_structured_rows():
     assert result["backend"] == "stub"
     assert result["rows"][0]["label"] == "sample_1"
     assert result["rows"][0]["predicted_concentration_ng_ml"] == 2.5
+
+
+def _paired_input(analyte_id="cea"):
+    reference = Spectrum((500.0, 600.0, 700.0), (1.0, 2.0, 1.5), role="reference")
+    response = Spectrum((500.0, 600.0, 700.0), (1.1, 2.2, 1.4), role="response")
+    return PairedSpectrumInput(analyte_id, "chip-01", "site-01", reference, response)
+
+
+def test_service_rejects_planned_analyte_without_calling_legacy_backend():
+    backend = _TrackingBackend()
+    service = LSPRAIService(backend=backend)
+
+    with pytest.raises(LSPRAIServiceError) as exc_info:
+        service.predict_paired(_paired_input("nse"))
+
+    assert exc_info.value.code == "model_not_implemented"
+    assert backend.calls == {
+        "predict_single": 0,
+        "build_comparison": 0,
+        "build_digital_twin": 0,
+        "predict_batch": 0,
+    }
+
+
+def test_service_routes_supported_prediction_to_injected_analyte_adapter():
+    class _Adapter:
+        def validate_input(self, paired_input):
+            return None
+
+        def predict_pair(self, paired_input, options=None):
+            return AnalytePredictionResult(
+                analyte_id=paired_input.analyte_id,
+                predicted_concentration_ng_ml=4.2,
+                predicted_log10_concentration=0.623,
+                target_unit="ng/mL",
+                metrics={"delta_lambda_nm": 1.8},
+                qc={"status": "pass"},
+                provenance={"model_version": "test"},
+            )
+
+    service = LSPRAIService(
+        backend=_TrackingBackend(),
+        analyte_adapters={"cea": _Adapter()},
+    )
+
+    result = service.predict_paired(_paired_input())
+
+    assert result.predicted_concentration_ng_ml == 4.2
+    assert result.analyte_id == "cea"
+    assert result.qc["status"] == "pass"

@@ -23,6 +23,14 @@ from .lspr_backend_protocol import (
     validate_spectrum,
 )
 from .lspr_master_bridge import LSPRMasterBridge
+from .analyte_model_adapters import (
+    AnalyteModelError,
+    AnalyteModelAdapter,
+    AnalytePredictionResult,
+    build_default_analyte_adapters,
+)
+from .analyte_registry import AnalyteRegistryError, get_default_analyte_registry
+from .paired_spectrum import PairedSpectrumInput, PairedSpectrumValidationError
 from nanosense.utils.logging_config import (
     current_context,
     get_logger,
@@ -124,9 +132,21 @@ class LSPRDigitalTwinResult:
 
 
 class LSPRAIService:
-    def __init__(self, backend: Optional[LSPRBackend] = None, config: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        backend: Optional[LSPRBackend] = None,
+        config: Optional[Dict[str, Any]] = None,
+        analyte_registry=None,
+        analyte_adapters: Optional[Dict[str, AnalyteModelAdapter]] = None,
+    ):
         self.config = config or {}
         self.backend = backend or create_lspr_backend(self.config)
+        self.analyte_registry = analyte_registry or get_default_analyte_registry()
+        self.analyte_adapters = build_default_analyte_adapters(
+            self.config, registry=self.analyte_registry
+        )
+        if analyte_adapters:
+            self.analyte_adapters.update(analyte_adapters)
 
     @staticmethod
     def _raise_if_error(response) -> None:
@@ -163,6 +183,50 @@ class LSPRAIService:
             "requested_at": datetime.now(timezone.utc).isoformat(),
             "metadata": dict(metadata or {}),
         }
+
+    def validate_paired_input(self, paired_input: PairedSpectrumInput):
+        if not isinstance(paired_input, PairedSpectrumInput):
+            raise LSPRAIServiceError(
+                "input_invalid",
+                "predict_paired requires a PairedSpectrumInput value",
+            )
+        try:
+            definition = self.analyte_registry.resolve(paired_input.analyte_id)
+            adapter = self.analyte_adapters.get(definition.analyte_id)
+            if adapter is None:
+                raise LSPRAIServiceError(
+                    "configuration_error",
+                    "No model adapter is registered for %s" % definition.display_name,
+                    {"analyte_id": definition.analyte_id},
+                )
+            adapter.validate_input(paired_input)
+            return definition
+        except AnalyteRegistryError as exc:
+            raise LSPRAIServiceError(exc.code, str(exc), exc.details) from exc
+        except PairedSpectrumValidationError as exc:
+            raise LSPRAIServiceError(exc.code, str(exc), exc.details) from exc
+        except AnalyteModelError as exc:
+            raise LSPRAIServiceError(exc.code, str(exc), exc.details) from exc
+
+    @_log_operation("predict_paired")
+    def predict_paired(
+        self,
+        paired_input: PairedSpectrumInput,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> AnalytePredictionResult:
+        definition = self.validate_paired_input(paired_input)
+        adapter = self.analyte_adapters[definition.analyte_id]
+        try:
+            result = adapter.predict_pair(paired_input, options=options)
+        except AnalyteModelError as exc:
+            raise LSPRAIServiceError(exc.code, str(exc), exc.details) from exc
+        if not isinstance(result, AnalytePredictionResult):
+            raise LSPRAIServiceError(
+                "model_result_invalid",
+                "The analyte model returned an invalid prediction result",
+                {"analyte_id": definition.analyte_id},
+            )
+        return result
 
     @_log_operation("discover_model_modes")
     def discover_model_modes(self) -> List[str]:
