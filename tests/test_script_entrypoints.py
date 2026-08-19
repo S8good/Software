@@ -41,3 +41,11 @@ def test_script_main_accepts_explicit_argv(module_name):
     with pytest.raises(SystemExit) as exc_info:
         module.main(["--help"])
     assert exc_info.value.code == 0
+
+
+def test_readme_documents_standard_script_commands():
+    content = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "python -m scripts.import_spectra --help" in content
+    assert "python -m scripts.generate_demo_database --help" in content
+    assert "nanosense-import-spectra" in content
+    assert "nanosense-generate-demo-database" in content

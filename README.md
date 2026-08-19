@@ -287,7 +287,7 @@ python main.py
 可选：生成一个用于数据库浏览器演示的示例数据库：
 
 ```bash
-python scripts/generate_demo_database.py --output data/demo_database.db --force
+python -m scripts.generate_demo_database --output data/demo_database.db --force
 ```
 
 ### 4.3 启动后建议首先检查
@@ -382,10 +382,24 @@ LSPR AI 工作台相关配置当前至少包括：
 
 ### 7.1 数据生成与导入
 
+在源码目录中使用模块入口：
+
+```bash
+python -m scripts.import_spectra --help
+python -m scripts.generate_demo_database --help
+```
+
+完成 `python -m pip install -e .` 后，也可以直接使用安装命令：
+
+```bash
+nanosense-import-spectra --help
+nanosense-generate-demo-database --help
+```
+
 | 脚本 | 功能 | 示例 |
 | ---- | ---- | ---- |
-| `scripts/generate_demo_database.py` | 生成演示数据库，便于展示数据库浏览器、批次和光谱集合 | `python scripts/generate_demo_database.py --output data/demo_database.db --force` |
-| `scripts/import_spectra.py` | 将 Excel / CSV / TXT 光谱导入数据库，并附带实验、仪器和处理元数据 | `python scripts/import_spectra.py sample.csv --project Demo --experiment Exp01` |
+| `scripts/generate_demo_database.py` | 生成演示数据库，便于展示数据库浏览器、批次和光谱集合 | `python -m scripts.generate_demo_database --output data/demo_database.db --force` |
+| `scripts/import_spectra.py` | 将 Excel / CSV / TXT 光谱导入数据库，并附带实验、仪器和处理元数据 | `python -m scripts.import_spectra sample.csv --project Demo --experiment Exp01` |
 
 ### 7.2 数据库迁移与验证
 
