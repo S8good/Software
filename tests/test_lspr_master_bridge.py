@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 import pytest
 
@@ -190,6 +191,31 @@ def test_inprocess_health_check_exposes_bridge_path_diagnostics(tmp_path):
     assert result.details["resolution_source"] == "explicit"
 
 
+def test_inprocess_prediction_maps_model_exception_to_model_error():
+    backend = InProcessLSPRBackend(config={})
+
+    class FailingEngine:
+        def predict_concentration(self, intensities, model_mode="auto"):
+            raise RuntimeError("model inference failed")
+
+    class StubBridge:
+        def create_ai_engine(self):
+            return FailingEngine()
+
+    backend._get_bridge = lambda: StubBridge()
+
+    result = backend.predict_single(
+        PredictSingleRequest(
+            wavelengths=[500.0, 501.0, 502.0],
+            intensities=[0.1, 0.2, 0.3],
+        )
+    )
+
+    assert result.ok is False
+    assert result.error.code == "model_error"
+    assert result.error.details["exception_type"] == "RuntimeError"
+
+
 def test_subprocess_health_check_exposes_runner_and_python_diagnostics(monkeypatch, tmp_path):
     runner_path = tmp_path / "runner.py"
     python_path = tmp_path / "python.exe"
@@ -210,6 +236,51 @@ def test_subprocess_health_check_exposes_runner_and_python_diagnostics(monkeypat
     assert result.ok is True
     assert result.details["runner_path"] == str(runner_path.resolve())
     assert result.details["python_executable"] == str(python_path.resolve())
+
+
+def test_subprocess_missing_runner_maps_to_external_process_error():
+    backend = SubprocessLSPRBackend(config={"lspr_runner_path": "C:/missing/runner.py"})
+
+    result = backend.health_check()
+
+    assert result.ok is False
+    assert result.error.code == "external_process_error"
+
+
+def test_subprocess_timeout_maps_to_request_timeout(monkeypatch, tmp_path):
+    runner_path = tmp_path / "runner.py"
+    runner_path.write_text("# test runner", encoding="utf-8")
+    backend = SubprocessLSPRBackend(config={"lspr_runner_path": str(runner_path)})
+
+    def raise_timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=args[0], timeout=backend.timeout_seconds)
+
+    monkeypatch.setattr("nanosense.ml.lspr_subprocess_backend.subprocess.run", raise_timeout)
+
+    result = backend.health_check()
+
+    assert result.ok is False
+    assert result.error.code == "request_timeout"
+    assert result.details["runner_path"] == str(runner_path.resolve())
+
+
+def test_subprocess_nonzero_exit_maps_to_external_process_error(monkeypatch, tmp_path):
+    runner_path = tmp_path / "runner.py"
+    runner_path.write_text("# test runner", encoding="utf-8")
+    backend = SubprocessLSPRBackend(config={"lspr_runner_path": str(runner_path)})
+
+    monkeypatch.setattr(
+        "nanosense.ml.lspr_subprocess_backend.subprocess.run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            args=args[0], returncode=3, stdout="", stderr="runner failed"
+        ),
+    )
+
+    result = backend.health_check()
+
+    assert result.ok is False
+    assert result.error.code == "external_process_error"
+    assert result.details["returncode"] == 3
 
 
 def test_predict_single_request_can_be_serialized_to_json_compatible_payload():
