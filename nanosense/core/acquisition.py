@@ -2,7 +2,7 @@ import threading
 from enum import Enum
 
 import numpy as np
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QObject, QThread, Qt, pyqtSignal
 
 
 class AcquisitionState(str, Enum):
@@ -41,6 +41,7 @@ class AcquisitionService(QObject):
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
         self._closed = False
+        self._batch_handle = None
 
     @property
     def state(self):
@@ -52,7 +53,12 @@ class AcquisitionService(QObject):
 
     @property
     def is_running(self):
-        return self._thread is not None and self._thread.is_alive()
+        return (
+            self._thread is not None and self._thread.is_alive()
+        ) or (
+            self._batch_handle is not None
+            and self._batch_handle.thread.isRunning()
+        )
 
     def _set_state(self, state):
         with self._lock:
@@ -138,6 +144,9 @@ class AcquisitionService(QObject):
         return False
 
     def stop(self, timeout_s=0.5):
+        handle = self._batch_handle
+        if handle is not None and handle.thread.isRunning():
+            return handle.close(timeout_ms=max(0, int(float(timeout_s) * 1000)))
         return self._stop_single(timeout_s)
 
     def reset(self):
@@ -175,3 +184,100 @@ class AcquisitionService(QObject):
                 emit(spectrum)
             except Exception:
                 stop_event.wait(error_backoff_s)
+
+    def start_batch(self, worker):
+        with self._lock:
+            if self._closed or self.is_running:
+                return self._batch_handle
+            self._set_state(AcquisitionState.CONNECTING)
+            self._batch_handle = BatchAcquisitionHandle(worker, parent=self)
+            self._batch_handle.state_changed.connect(
+                self._set_state, Qt.DirectConnection
+            )
+            self._batch_handle.error_occurred.connect(
+                self.error_occurred.emit, Qt.DirectConnection
+            )
+            self._batch_handle.finished.connect(
+                self._on_batch_finished, Qt.DirectConnection
+            )
+            self._batch_handle.start()
+            return self._batch_handle
+
+    def _on_batch_finished(self):
+        handle = self._batch_handle
+        if handle is None:
+            return
+        if getattr(handle.worker, "run_status", None) == "failed":
+            self._set_state(AcquisitionState.ERROR)
+        elif self._state is not AcquisitionState.ERROR:
+            self._set_state(AcquisitionState.IDLE)
+        self.finished.emit()
+
+
+class BatchAcquisitionHandle(QObject):
+    state_changed = pyqtSignal(object)
+    error_occurred = pyqtSignal(str)
+    finished = pyqtSignal()
+
+    def __init__(self, worker, parent=None):
+        super().__init__(parent)
+        self.worker = worker
+        self.thread = QThread()
+        self._state = AcquisitionState.IDLE
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.thread.quit, Qt.DirectConnection)
+        self.worker.finished.connect(self._on_worker_finished, Qt.DirectConnection)
+        self.worker.error.connect(self.error_occurred.emit)
+        self.thread.finished.connect(self._on_thread_finished, Qt.DirectConnection)
+
+    @property
+    def state(self):
+        return self._state
+
+    def _set_state(self, state):
+        if self._state is state:
+            return
+        self._state = state
+        self.state_changed.emit(state)
+
+    def start(self):
+        if self.thread.isRunning():
+            return True
+        self._set_state(AcquisitionState.CONNECTING)
+        self.thread.start()
+        self._set_state(AcquisitionState.ACQUIRING)
+        return True
+
+    def stop(self):
+        if not self.thread.isRunning():
+            return True
+        self._set_state(AcquisitionState.STOPPING)
+        self.worker.stop()
+        return True
+
+    def wait(self, timeout_ms=500):
+        if not self.thread.isRunning():
+            return True
+        return bool(self.thread.wait(max(0, int(timeout_ms))))
+
+    def close(self, timeout_ms=500):
+        self.stop()
+        stopped = self.wait(timeout_ms)
+        if not stopped:
+            self._set_state(AcquisitionState.ERROR)
+            self.error_occurred.emit(
+                "Batch acquisition thread did not stop within the timeout"
+            )
+        return stopped
+
+    def _on_worker_finished(self):
+        if getattr(self.worker, "run_status", None) == "failed":
+            self._set_state(AcquisitionState.ERROR)
+        elif self._state is not AcquisitionState.STOPPING:
+            self._set_state(AcquisitionState.READY)
+
+    def _on_thread_finished(self):
+        if self._state is AcquisitionState.STOPPING:
+            self._set_state(AcquisitionState.IDLE)
+        self.finished.emit()

@@ -3,7 +3,7 @@ import time
 
 import numpy as np
 import pytest
-from PyQt5.QtCore import QCoreApplication
+from PyQt5.QtCore import QCoreApplication, QObject, pyqtSignal, pyqtSlot
 
 from nanosense.core.acquisition import AcquisitionService, AcquisitionState
 
@@ -101,3 +101,38 @@ def test_one_hundred_start_stop_cycles_leave_no_thread(qt_app):
     assert not service.is_running
     assert service.thread is None or not service.thread.is_alive()
     service.close(timeout_s=1.0)
+
+
+class _FakeBatchWorker(QObject):
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        self.run_status = "pending"
+        self.stop_calls = 0
+
+    @pyqtSlot()
+    def run(self):
+        time.sleep(0.02)
+        self.run_status = "completed"
+        self.finished.emit()
+
+    @pyqtSlot()
+    def stop(self):
+        self.stop_calls += 1
+        self.run_status = "aborted"
+        self.finished.emit()
+
+
+def test_batch_handle_owns_thread_and_close_is_idempotent(qt_app):
+    service = AcquisitionService()
+    worker = _FakeBatchWorker()
+    handle = service.start_batch(worker)
+
+    assert handle.thread.isRunning()
+    assert handle.wait(timeout_ms=1000) is True
+    assert worker.run_status == "completed"
+    assert service.state is AcquisitionState.IDLE
+    assert service.close(timeout_s=1.0) is True
+    assert service.close(timeout_s=1.0) is True
