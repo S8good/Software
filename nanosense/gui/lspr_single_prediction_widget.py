@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from PyQt5.QtCore import pyqtSignal
@@ -12,7 +13,10 @@ from PyQt5.QtWidgets import (
 )
 
 from .lspr_result_summary_widget import LSPRResultSummaryWidget
-from ..ml.lspr_ai_service import LSPRAIService, LSPRSpectrumComparisonResult
+from ..ml.lspr_ai_service import LSPRAIService, LSPRAIServiceError, LSPRSpectrumComparisonResult
+
+
+logger = logging.getLogger(__name__)
 
 
 class LSPRSinglePredictionWidget(QWidget):
@@ -91,5 +95,8 @@ class LSPRSinglePredictionWidget(QWidget):
                     model_mode=result.model_mode,
                 )
             self.comparison_ready.emit(comparison)
-        except Exception as exc:
+        except LSPRAIServiceError as exc:
             QMessageBox.critical(self, "LSPR AI Workbench", str(exc))
+        except Exception:
+            logger.exception("LSPR single prediction failed")
+            QMessageBox.critical(self, "LSPR AI Workbench", "Prediction failed.")

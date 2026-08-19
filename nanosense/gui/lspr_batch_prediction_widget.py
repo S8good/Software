@@ -1,8 +1,13 @@
+import logging
 from typing import Callable, List, Optional
 
-from PyQt5.QtWidgets import QFileDialog, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QPushButton
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QPushButton
 
+from nanosense.ml.lspr_ai_service import LSPRAIServiceError
 from nanosense.utils.file_io import load_spectra_from_path
+
+
+logger = logging.getLogger(__name__)
 
 
 class LSPRBatchPredictionWidget(QWidget):
@@ -50,7 +55,15 @@ class LSPRBatchPredictionWidget(QWidget):
 
     def _run_batch_prediction(self):
         service = self._get_service()
-        result = service.predict_batch(items=self._items, model_mode="auto")
+        try:
+            result = service.predict_batch(items=self._items, model_mode="auto")
+        except LSPRAIServiceError as exc:
+            QMessageBox.warning(self, "Batch Prediction", str(exc))
+            return
+        except Exception:
+            logger.exception("LSPR batch prediction failed")
+            QMessageBox.warning(self, "Batch Prediction", "Batch prediction failed.")
+            return
         rows = result["rows"]
         self.results_table.setRowCount(len(rows))
         for row_index, row in enumerate(rows):

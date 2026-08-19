@@ -1193,7 +1193,16 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-            payload = json.dumps(input_context or {}, ensure_ascii=False)
+            context = dict(input_context or {})
+            if algorithm_version is None:
+                provenance = context.get("provenance") or {}
+                algorithm_version = (
+                    context.get("model_version")
+                    or context.get("model_mode")
+                    or provenance.get("model_version")
+                    or provenance.get("model_mode")
+                )
+            payload = json.dumps(context, ensure_ascii=False)
 
             cursor.execute(
                 """
