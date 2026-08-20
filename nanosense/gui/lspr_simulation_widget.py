@@ -239,7 +239,7 @@ class LSPRSimulationWidget(QMainWindow):
         
         try:
             colormap = pg.colormap.get('viridis')
-        except:
+        except Exception:
             colormap = pg.colormap.get('jet')
         self.array_view_widget.setColorMap(colormap)
         
@@ -414,7 +414,7 @@ class LSPRSimulationWidget(QMainWindow):
         try:
             settings = load_settings()
             theme = settings.get('theme', 'dark')
-        except:
+        except Exception:
             theme = 'dark'
         
         if theme == 'light':

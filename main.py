@@ -1,6 +1,7 @@
 # main.py
 
 import argparse
+import io
 import sys
 import os
 import time
@@ -147,7 +148,13 @@ def main(argv=None):
 
 
 def _run_application(argv=None):
-    _build_argument_parser().parse_args(argv)
+    parser = _build_argument_parser()
+    parsed_argv = sys.argv[1:] if argv is None else list(argv)
+    if any(option in {"-h", "--help"} for option in parsed_argv):
+        help_stream = sys.stdout or sys.stderr or io.StringIO()
+        parser.print_help(file=help_stream)
+        return 0
+    parser.parse_args(parsed_argv)
     configure_pyqtgraph_theme(load_settings().get("theme", "dark"))
 
     qt_argv = sys.argv if argv is None else [sys.argv[0], *argv]

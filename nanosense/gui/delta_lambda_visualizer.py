@@ -29,6 +29,10 @@ from nanosense.algorithms.peak_analysis import (
 )
 from nanosense.algorithms.preprocessing import baseline_als, smooth_savitzky_golay
 from nanosense.utils.file_io import load_wide_format_spectrum
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 try:  # Optional dependency for GIF export
     import imageio.v3 as iio
@@ -1318,7 +1322,7 @@ class DeltaLambdaVisualizationDialog(QDialog):
             # 使用延迟任务帮助确保渲染完成
             QTimer.singleShot(100, lambda: self.gl_view.update())
         except Exception as e:
-            print(f"GL view repaint error: {e}")
+            logger.exception("event=gl_view_repaint_failed")
 
     @staticmethod
     def _build_bar_colors(values):

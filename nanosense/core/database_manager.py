@@ -7,6 +7,7 @@ import time
 import threading
 import hashlib
 import functools
+from datetime import datetime
 import numpy as np
 from collections import defaultdict
 from .migration_runner import run_migrations
@@ -17,6 +18,8 @@ from .snapshot_utils import (
 )
 from typing import Any, Dict, List, Optional, Tuple
 from nanosense.utils.logging_config import get_logger
+from .processing_methods import build_processing_method
+from .quality_control import run_quality_checks, summarize_quality
 
 
 logger = get_logger(__name__)
@@ -147,8 +150,8 @@ class DatabaseManager:
 
             self.conn.commit()
 
-        except Exception as e:
-            print(f"创建数据表失败: {e}")
+        except Exception:
+            logger.exception("event=database_schema_create_failed")
 
     def _create_compatibility_views(self):
         if not self.conn:
@@ -247,8 +250,8 @@ class DatabaseManager:
             return list(spectra_by_timestamp.values())
         except sqlite3.OperationalError:
             return None
-        except Exception as e:
-            print(f"读取结构化光谱数据失败: {e}")
+        except Exception:
+            logger.exception("event=structured_spectrum_read_failed")
             return None
 
     def _coerce_metric_value(self, raw_value: Optional[str]) -> Any:
@@ -308,8 +311,8 @@ class DatabaseManager:
             return results
         except sqlite3.OperationalError:
             return None
-        except Exception as e:
-            print(f"读取结构化分析结果失败: {e}")
+        except Exception:
+            logger.exception("event=structured_analysis_read_failed")
             return None
 
     @staticmethod
@@ -368,8 +371,8 @@ class DatabaseManager:
             return cursor.lastrowid
         except sqlite3.OperationalError:
             return None
-        except Exception as e:
-            print(f"记录仪器状态失败: {e}")
+        except Exception:
+            logger.exception("event=instrument_status_record_failed")
             return None
 
     def _get_or_create_processing_snapshot(
@@ -380,24 +383,41 @@ class DatabaseManager:
         if not processing_info:
             return None
 
+        explicit_id = processing_info.get("processing_config_id")
+        if explicit_id is not None:
+            return int(explicit_id)
+
         name = processing_info.get('name') or 'unspecified'
         version = processing_info.get('version') or '1.0'
         normalized_info = dict(processing_info)
         normalized_info['name'] = name
         normalized_info['version'] = version
         canonical = canonicalize_processing_info(normalized_info)
-        parameters = canonical.get('parameters', {})
-        parameters_json = json.dumps(parameters, ensure_ascii=False, sort_keys=True)
+        parameters = processing_info.get('parameters')
+        if not isinstance(parameters, dict):
+            parameters = canonical.get('parameters', {})
+        mode = processing_info.get('mode') or parameters.get('mode') or 'Unknown'
+        payload = build_processing_method(
+            name=name,
+            mode=mode,
+            parameters=parameters,
+            version=version,
+            description=processing_info.get('description', ''),
+            is_template=False,
+        )
+        parameters_json = json.dumps(
+            payload['parameters'], ensure_ascii=False, sort_keys=True
+        )
 
         try:
             cursor.execute(
                 """
                 SELECT processing_config_id
                 FROM processing_snapshots
-                WHERE name = ? AND version = ? AND parameters_json = ? AND is_active = 1
+                WHERE fingerprint = ? AND is_active = 1
                 LIMIT 1
                 """,
-                (name, version, parameters_json),
+                (payload['fingerprint'],),
             )
             row = cursor.fetchone()
             if row:
@@ -406,20 +426,126 @@ class DatabaseManager:
             cursor.execute(
                 """
                 INSERT INTO processing_snapshots (
+                    name, version, parameters_json, created_at, method_type,
+                    mode, description, is_template, fingerprint
+                ) VALUES (?, ?, ?, ?, 'measurement', ?, ?, 0, ?)
+                """,
+                (
                     name,
                     version,
                     parameters_json,
-                    created_at
-                ) VALUES (?, ?, ?, ?)
-                """,
-                (name, version, parameters_json, created_at),
+                    created_at,
+                    payload['mode'],
+                    payload['description'],
+                    payload['fingerprint'],
+                ),
             )
             return cursor.lastrowid
         except sqlite3.OperationalError:
             return None
-        except Exception as e:
-            print(f"记录处理配置失败: {e}")
+        except Exception:
+            logger.exception("event=processing_config_record_failed")
             return None
+
+    def create_processing_method(
+            self,
+            name: str,
+            mode: str,
+            parameters: Dict[str, Any],
+            version: str = "1.0",
+            description: str = "",
+            parent_config_id: Optional[int] = None,
+    ) -> Optional[int]:
+        """Create an immutable processing method version and return its ID."""
+        if not self.conn:
+            return None
+        payload = build_processing_method(
+            name=name,
+            mode=mode,
+            parameters=parameters,
+            version=version,
+            description=description,
+            parent_config_id=parent_config_id,
+        )
+        try:
+            cursor = self.conn.cursor()
+            row = cursor.execute(
+                "SELECT processing_config_id FROM processing_snapshots "
+                "WHERE fingerprint = ? AND is_active = 1 LIMIT 1",
+                (payload["fingerprint"],),
+            ).fetchone()
+            if row:
+                return row[0]
+            cursor.execute(
+                """
+                INSERT INTO processing_snapshots (
+                    name, version, parameters_json, created_at, method_type,
+                    mode, description, is_template, fingerprint, parent_config_id
+                ) VALUES (?, ?, ?, datetime('now'), 'measurement', ?, ?, 1, ?, ?)
+                """,
+                (
+                    payload["name"],
+                    payload["version"],
+                    json.dumps(payload["parameters"], ensure_ascii=False, sort_keys=True),
+                    payload["mode"],
+                    payload["description"],
+                    payload["fingerprint"],
+                    payload["parent_config_id"],
+                ),
+            )
+            self.conn.commit()
+            return cursor.lastrowid
+        except Exception:
+            self.conn.rollback()
+            logger.exception("event=processing_method_create_failed")
+            return None
+
+    def get_processing_method(self, processing_config_id: int) -> Optional[Dict[str, Any]]:
+        if not self.conn:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT processing_config_id, name, version, parameters_json,
+                   method_type, mode, description, is_template, fingerprint,
+                   parent_config_id, created_at
+            FROM processing_snapshots
+            WHERE processing_config_id = ?
+            """,
+            (processing_config_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return {
+            "processing_config_id": row[0],
+            "name": row[1],
+            "version": row[2],
+            "parameters": json.loads(row[3] or "{}"),
+            "method_type": row[4],
+            "mode": row[5],
+            "description": row[6] or "",
+            "is_template": bool(row[7]),
+            "fingerprint": row[8],
+            "parent_config_id": row[9],
+            "created_at": row[10],
+        }
+
+    def list_processing_methods(self, mode: Optional[str] = None) -> List[Dict[str, Any]]:
+        if not self.conn:
+            return []
+        if mode:
+            rows = self.conn.execute(
+                "SELECT processing_config_id FROM processing_snapshots "
+                "WHERE is_template = 1 AND is_active = 1 AND mode = ? "
+                "ORDER BY name, created_at",
+                (mode,),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT processing_config_id FROM processing_snapshots "
+                "WHERE is_template = 1 AND is_active = 1 "
+                "ORDER BY name, created_at"
+            ).fetchall()
+        return [self.get_processing_method(row[0]) for row in rows]
 
     def _store_structured_spectrum(
             self,
@@ -433,6 +559,7 @@ class DatabaseManager:
             batch_run_item_id: Optional[int] = None,
             instrument_info: Optional[Dict[str, Any]] = None,
             processing_info: Optional[Dict[str, Any]] = None,
+            quality_context: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
         try:
             wave_blob = json.dumps(wavelengths, separators=(',', ':')).encode('utf-8')
@@ -482,12 +609,82 @@ class DatabaseManager:
                     'good'
                 ),
             )
-            return cursor.lastrowid
+            spectrum_set_id = cursor.lastrowid
+            if quality_context is not None:
+                context = dict(quality_context)
+                checks = run_quality_checks(
+                    wavelengths,
+                    intensities,
+                    mode=context.get("mode", "Raw"),
+                    background=context.get("background"),
+                    reference=context.get("reference"),
+                    saturation_limit=context.get("saturation_limit", 65535.0),
+                    low_signal_threshold=context.get("low_signal_threshold", 1e-12),
+                )
+                self._insert_quality_checks(cursor, spectrum_set_id, checks)
+            return spectrum_set_id
         except sqlite3.OperationalError:
             return None
-        except Exception as e:
-            print(f"写入结构化光谱失败: {e}")
+        except Exception:
+            logger.exception("event=structured_spectrum_write_failed")
             return None
+
+    @staticmethod
+    def _insert_quality_checks(cursor, spectrum_set_id, checks):
+        summary = summarize_quality(checks)
+        for check in checks:
+            cursor.execute(
+                """
+                INSERT INTO quality_check_results (
+                    spectrum_set_id, rule_key, severity, status,
+                    measured_value, threshold_value, unit, message, details_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    spectrum_set_id,
+                    check["rule_key"],
+                    check["severity"],
+                    check["status"],
+                    check.get("measured_value"),
+                    check.get("threshold_value"),
+                    check.get("unit"),
+                    check["message"],
+                    json.dumps(check.get("details") or {}, ensure_ascii=False, sort_keys=True),
+                ),
+            )
+        cursor.execute(
+            "UPDATE spectrum_sets SET quality_flag = ? WHERE spectrum_set_id = ?",
+            (summary, spectrum_set_id),
+        )
+
+    def get_quality_checks(self, spectrum_set_id: int) -> List[Dict[str, Any]]:
+        if not self.conn:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT quality_check_id, rule_key, severity, status, measured_value,
+                   threshold_value, unit, message, details_json, created_at
+            FROM quality_check_results
+            WHERE spectrum_set_id = ?
+            ORDER BY quality_check_id
+            """,
+            (spectrum_set_id,),
+        ).fetchall()
+        return [
+            {
+                "quality_check_id": row[0],
+                "rule_key": row[1],
+                "severity": row[2],
+                "status": row[3],
+                "measured_value": row[4],
+                "threshold_value": row[5],
+                "unit": row[6],
+                "message": row[7],
+                "details": json.loads(row[8] or "{}"),
+                "created_at": row[9],
+            }
+            for row in rows
+        ]
 
     @staticmethod
     def _stringify_metric_value(value: Any) -> str:
@@ -615,11 +812,159 @@ class DatabaseManager:
 
             return None
 
-        except Exception as e:
-
-            print(f"写入结构化分析结果失败: {e}")
+        except Exception:
+            logger.exception("event=structured_analysis_write_failed")
 
             return None
+
+    def _source_spectrum_fingerprint(self, cursor, spectrum_set_ids):
+        if not spectrum_set_ids:
+            return None
+        placeholders = ",".join("?" for _ in spectrum_set_ids)
+        rows = cursor.execute(
+            f"""
+            SELECT ss.spectrum_set_id, sd.hash
+            FROM spectrum_sets AS ss
+            JOIN spectrum_data AS sd ON sd.data_id = ss.data_id
+            WHERE ss.spectrum_set_id IN ({placeholders})
+            """,
+            tuple(spectrum_set_ids),
+        ).fetchall()
+        by_id = {row[0]: row[1] for row in rows}
+        ordered = [{"spectrum_set_id": item, "hash": by_id.get(item)} for item in spectrum_set_ids]
+        serialized = json.dumps(ordered, ensure_ascii=False, separators=(",", ":"))
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def create_analysis_run(
+            self,
+            experiment_id: int,
+            analysis_type: str,
+            result_data: Any,
+            *,
+            processing_config_id: Optional[int] = None,
+            parent_analysis_run_id: Optional[int] = None,
+            source_spectrum_set_ids: Optional[List[int]] = None,
+            algorithm_version: Optional[str] = None,
+            run_kind: str = "analysis",
+            status: str = "completed",
+    ) -> Optional[int]:
+        """Persist one append-only analysis run with source lineage."""
+        if not self.conn:
+            return None
+        source_ids = list(source_spectrum_set_ids or [])
+        try:
+            cursor = self.conn.cursor()
+            timestamp = datetime.now().isoformat(timespec="microseconds")
+            source_fingerprint = self._source_spectrum_fingerprint(cursor, source_ids)
+            input_context = json.dumps(
+                {
+                    "source_spectrum_set_ids": source_ids,
+                    "result_data": result_data,
+                },
+                ensure_ascii=False,
+            )
+            cursor.execute(
+                """
+                INSERT INTO analysis_runs (
+                    experiment_id, batch_run_item_id, analysis_type,
+                    algorithm_version, status, started_at, finished_at,
+                    initiated_by, input_context, processing_config_id,
+                    parent_analysis_run_id, source_fingerprint, run_kind
+                ) VALUES (?, NULL, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+                """,
+                (
+                    experiment_id,
+                    analysis_type,
+                    algorithm_version,
+                    status,
+                    timestamp,
+                    timestamp,
+                    input_context,
+                    processing_config_id,
+                    parent_analysis_run_id,
+                    source_fingerprint,
+                    run_kind,
+                ),
+            )
+            run_id = cursor.lastrowid
+            if isinstance(result_data, dict):
+                primary_assigned = False
+                for key, value in result_data.items():
+                    numeric = isinstance(value, (int, float))
+                    cursor.execute(
+                        """
+                        INSERT INTO analysis_metrics (
+                            analysis_run_id, metric_key, metric_value, unit, is_primary
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            str(key),
+                            self._stringify_metric_value(value),
+                            None,
+                            1 if numeric and not primary_assigned else 0,
+                        ),
+                    )
+                    primary_assigned = primary_assigned or numeric
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO analysis_metrics (
+                        analysis_run_id, metric_key, metric_value, unit, is_primary
+                    ) VALUES (?, 'value', ?, NULL, 1)
+                    """,
+                    (run_id, self._stringify_metric_value(result_data)),
+                )
+            self.conn.commit()
+            return run_id
+        except Exception:
+            self.conn.rollback()
+            logger.exception("event=analysis_run_create_failed")
+            return None
+
+    def get_analysis_run(self, analysis_run_id: int) -> Optional[Dict[str, Any]]:
+        if not self.conn:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT analysis_run_id, experiment_id, analysis_type,
+                   algorithm_version, status, started_at, finished_at,
+                   input_context, processing_config_id, parent_analysis_run_id,
+                   source_fingerprint, run_kind
+            FROM analysis_runs
+            WHERE analysis_run_id = ?
+            """,
+            (analysis_run_id,),
+        ).fetchone()
+        if not row:
+            return None
+        metrics = self.conn.execute(
+            """
+            SELECT metric_key, metric_value
+            FROM analysis_metrics
+            WHERE analysis_run_id = ?
+            ORDER BY metric_key
+            """,
+            (analysis_run_id,),
+        ).fetchall()
+        return {
+            "analysis_run_id": row[0],
+            "experiment_id": row[1],
+            "analysis_type": row[2],
+            "algorithm_version": row[3],
+            "status": row[4],
+            "started_at": row[5],
+            "finished_at": row[6],
+            "input_context": json.loads(row[7] or "{}"),
+            "processing_config_id": row[8],
+            "parent_analysis_run_id": row[9],
+            "source_fingerprint": row[10],
+            "run_kind": row[11],
+            "metrics": {
+                metric_key: self._coerce_metric_value(metric_value)
+                for metric_key, metric_value in metrics
+            },
+        }
 
     def create_batch_run(self, project_id: int, name: str, layout_reference: str = "",
 
@@ -690,9 +1035,8 @@ class DatabaseManager:
 
             return cursor.lastrowid
 
-        except Exception as e:
-
-            print(f"创建批量运行记录失败: {e}")
+        except Exception:
+            logger.exception("event=batch_run_create_failed")
 
             return None
 
@@ -746,9 +1090,8 @@ class DatabaseManager:
 
             return True
 
-        except Exception as e:
-
-            print(f"更新批量运行状态失败: {e}")
+        except Exception:
+            logger.exception("event=batch_run_status_update_failed")
 
             return False
 
@@ -806,9 +1149,8 @@ class DatabaseManager:
 
             self.conn.commit()
 
-        except Exception as e:
-
-            print(f"创建批量运行明细失败: {e}")
+        except Exception:
+            logger.exception("event=batch_item_create_failed")
 
         return mapping
 
@@ -839,9 +1181,8 @@ class DatabaseManager:
 
             self.conn.commit()
 
-        except Exception as e:
-
-            print(f"关联批量明细与实验失败: {e}")
+        except Exception:
+            logger.exception("event=batch_item_experiment_link_failed")
 
     def update_batch_item_progress(self, item_id: int, capture_count: Optional[int] = None,
 
@@ -888,9 +1229,8 @@ class DatabaseManager:
 
             self.conn.commit()
 
-        except Exception as e:
-
-            print(f"更新批量明细进度失败: {e}")
+        except Exception:
+            logger.exception("event=batch_item_progress_update_failed")
 
     def finalize_batch_item(self, item_id: int, status: str = "completed"):
 
@@ -941,15 +1281,14 @@ class DatabaseManager:
 
             return merged
 
-        except Exception as e:
-
-            print(f"更新批量明细元数据失败: {e}")
+        except Exception:
+            logger.exception("event=batch_item_metadata_update_failed")
 
             return None
 
     def find_or_create_project(self, name, description=""):
         if not self.conn:
-            print("数据库连接未建立")
+            logger.error("event=database_not_connected operation=find_or_create_project")
             return None
         try:
             cursor = self.conn.cursor()
@@ -957,7 +1296,7 @@ class DatabaseManager:
             result = cursor.fetchone()
             if result:
                 project_id = result[0]
-                print(f"找到现有项目: {name} (ID: {project_id})")
+                logger.info("event=project_found project=%s project_id=%s", name, project_id)
                 return project_id
             else:
                 timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -967,12 +1306,10 @@ class DatabaseManager:
                 """, (name, description, timestamp))
                 self.conn.commit()
                 project_id = cursor.lastrowid
-                print(f"创建新项目: {name} (ID: {project_id})")
+                logger.info("event=project_created project=%s project_id=%s", name, project_id)
                 return project_id
-        except Exception as e:
-            print(f"查找或创建项目失败: {e}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
+            logger.exception("event=project_find_or_create_failed project=%s", name)
             return None
 
     def get_distinct_experiment_statuses(self):
@@ -984,8 +1321,8 @@ class DatabaseManager:
             cursor = self.conn.cursor()
             cursor.execute("SELECT DISTINCT status FROM experiments WHERE status IS NOT NULL ORDER BY status")
             return [row[0] for row in cursor.fetchall() if row[0]]
-        except Exception as e:
-            print(f"获取实验状态列表失败: {e}")
+        except Exception:
+            logger.exception("event=experiment_status_list_failed")
             return []
 
     def get_all_projects(self):
@@ -1000,9 +1337,8 @@ class DatabaseManager:
 
             return cursor.fetchall()
 
-        except Exception as e:
-
-            print(f"获取所有项目失败: {e}")
+        except Exception:
+            logger.exception("event=project_list_failed")
 
             return []
 
@@ -1026,9 +1362,8 @@ class DatabaseManager:
 
             return cursor.lastrowid
 
-        except Exception as e:
-
-            print(f"创建实验记录失败: {e}")
+        except Exception:
+            logger.exception("event=experiment_create_failed")
 
             return None
 
@@ -1053,6 +1388,8 @@ class DatabaseManager:
             instrument_info: Optional[Dict[str, Any]] = None,
 
             processing_info: Optional[Dict[str, Any]] = None,
+
+            quality_context: Optional[Dict[str, Any]] = None,
 
     ):
 
@@ -1093,6 +1430,8 @@ class DatabaseManager:
 
                 processing_info=processing_info,
 
+                quality_context=quality_context,
+
             )
 
             wl_str = json.dumps(wl_list)
@@ -1114,7 +1453,7 @@ class DatabaseManager:
 
             self.conn.rollback()
 
-            print(f"光谱数据入库失败: {e}")
+            logger.exception("event=spectrum_persist_failed")
 
             return None
 
@@ -1177,7 +1516,7 @@ class DatabaseManager:
 
             self.conn.rollback()
 
-            print(f"保存分析结果失败: {e}")
+            logger.exception("event=analysis_result_persist_failed")
 
             return None
 
@@ -1252,9 +1591,9 @@ class DatabaseManager:
 
             self.conn.commit()
             return analysis_run_id
-        except Exception as e:
+        except Exception:
             self.conn.rollback()
-            print(f"保存 LSPR AI 预测结果失败: {e}")
+            logger.exception("event=lspr_prediction_persist_failed")
             return None
 
     def search_experiments(
@@ -1366,9 +1705,8 @@ class DatabaseManager:
 
 
 
-        except Exception as e:
-
-            print(f"搜索实验时发生错误: {e}")
+        except Exception:
+            logger.exception("event=experiment_search_failed")
 
             return []
 
@@ -1434,9 +1772,8 @@ class DatabaseManager:
 
 
 
-        except Exception as e:
-
-            print(f"获取光谱数据时发生错误: {e}")
+        except Exception:
+            logger.exception("event=spectrum_data_query_failed")
 
             return []
 
@@ -1479,7 +1816,10 @@ class DatabaseManager:
 
             self.conn.commit()
 
-            print(f"成功删除了 {len(experiment_ids)} 个实验及其关联数据。")
+            logger.info(
+                "event=experiments_deleted count=%s",
+                len(experiment_ids),
+            )
 
             return True, ""
 
@@ -1493,7 +1833,7 @@ class DatabaseManager:
 
             error_message = f"删除实验时发生错误: {e}"
 
-            print(error_message)
+            logger.exception("event=experiments_delete_failed")
 
             return False, error_message
 
@@ -1591,9 +1931,8 @@ class DatabaseManager:
 
 
 
-        except Exception as e:
-
-            print(f"获取完整实验数据时出错: {e}")
+        except Exception:
+            logger.exception("event=complete_experiment_data_failed")
 
             return None
 

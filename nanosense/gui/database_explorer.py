@@ -58,6 +58,7 @@ class SortableTableWidgetItem(QTableWidgetItem):
 
 class DatabaseExplorerDialog(QDialog):
     load_spectra_requested = pyqtSignal(list)#定义一个信号
+    reanalysis_requested = pyqtSignal(dict)
     open_lspr_ai_requested = pyqtSignal(dict)
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -83,6 +84,7 @@ class DatabaseExplorerDialog(QDialog):
         self._detail_watcher: Optional["QFutureWatcher"] = None
         self._current_batch_rows: List[Dict[str, Any]] = []
         self._filtered_batch_rows: List[Dict[str, Any]] = []
+        self._current_spectra_rows: List[Dict[str, Any]] = []
         self._current_ai_runs: List[Dict[str, Any]] = []
         self._init_ui()
         self._connect_signals()
@@ -264,12 +266,14 @@ class DatabaseExplorerDialog(QDialog):
 
         action_buttons_layout = QHBoxLayout()
         self.load_spectra_button = QPushButton()
+        self.reanalysis_button = QPushButton()
         self.open_lspr_ai_button = QPushButton()
         self.export_button = QPushButton()
         self.delete_button = QPushButton()
 
         action_buttons_layout.addStretch()
         action_buttons_layout.addWidget(self.load_spectra_button)
+        action_buttons_layout.addWidget(self.reanalysis_button)
         action_buttons_layout.addWidget(self.open_lspr_ai_button)
         action_buttons_layout.addWidget(self.export_button)
         action_buttons_layout.addWidget(self.delete_button)
@@ -287,11 +291,13 @@ class DatabaseExplorerDialog(QDialog):
         self.search_button.clicked.connect(self._search_database)
         self.reset_button.clicked.connect(self._reset_filters)
         self.load_spectra_button.clicked.connect(self._load_selected_spectra)
+        self.reanalysis_button.clicked.connect(self._reanalyse_selected_spectrum)
         self.open_lspr_ai_button.clicked.connect(self._open_selected_lspr_ai)
         self.export_button.clicked.connect(self._export_selected_data)
         self.status_combo.currentIndexChanged.connect(self._search_database)
         self.operator_edit.textChanged.connect(self._search_database)
         self.results_table.itemSelectionChanged.connect(self._refresh_detail_tabs)
+        self.spectra_table.itemSelectionChanged.connect(self._update_reanalysis_button_state)
         self.delete_button.clicked.connect(self._delete_selected_experiments)
         self.batch_status_filter.currentIndexChanged.connect(self._apply_batch_filters)
         self.batch_apply_filter_button.clicked.connect(self._apply_batch_filters)
@@ -329,6 +335,7 @@ class DatabaseExplorerDialog(QDialog):
 
         # 操作按钮
         self.load_spectra_button.setText(self.tr("Load Spectra to Analysis"))
+        self.reanalysis_button.setText(self.tr("Reanalyze Selected Spectrum"))
         self.open_lspr_ai_button.setText(self.tr("Open in LSPR AI Workbench"))
         self.export_button.setText(self.tr("Export Selected..."))
         self.delete_button.setText(self.tr("Delete Selected"))
@@ -784,6 +791,9 @@ class DatabaseExplorerDialog(QDialog):
             self.experiment_notes.clear()
         if hasattr(self, "spectra_table"):
             self.spectra_table.setRowCount(0)
+        self._current_spectra_rows = []
+        if hasattr(self, "reanalysis_button"):
+            self.reanalysis_button.setEnabled(False)
         if hasattr(self, "batch_table"):
             self.batch_table.setRowCount(0)
         if hasattr(self, "ai_runs_table"):
@@ -806,8 +816,10 @@ class DatabaseExplorerDialog(QDialog):
         self.experiment_notes.setPlainText(str(notes_value) if notes_value else "")
 
     def _update_spectra_tab(self, spectra_rows: List[Dict[str, Any]]):
+        self._current_spectra_rows = spectra_rows or []
         self.spectra_table.setRowCount(0)
         if not spectra_rows:
+            self._update_reanalysis_button_state()
             return
 
         columns = [
@@ -827,6 +839,41 @@ class DatabaseExplorerDialog(QDialog):
                 value = row.get(key)
                 item = QTableWidgetItem("" if value is None else str(value))
                 self.spectra_table.setItem(row_idx, col_idx, item)
+        self._update_reanalysis_button_state()
+
+    def _update_reanalysis_button_state(self):
+        if not hasattr(self, "reanalysis_button"):
+            return
+        enabled = (
+            self.detail_tabs.currentWidget() == self.detail_tabs.widget(1)
+            and self.spectra_table.currentRow() >= 0
+            and self.spectra_table.currentRow() < len(self._current_spectra_rows)
+            and self.data_access is not None
+        )
+        self.reanalysis_button.setEnabled(enabled)
+
+    def _reanalyse_selected_spectrum(self):
+        row_index = self.spectra_table.currentRow()
+        if (
+            row_index < 0
+            or row_index >= len(self._current_spectra_rows)
+            or not self.data_access
+        ):
+            return
+        spectrum_set_id = self._current_spectra_rows[row_index].get("spectrum_set_id")
+        if spectrum_set_id is None:
+            return
+        try:
+            payload = self.data_access.fetch_spectrum_payload(int(spectrum_set_id))
+        except Exception as exc:
+            QMessageBox.warning(
+                self,
+                self.tr("Warning"),
+                self.tr("Failed to load spectrum for reanalysis: {0}").format(exc),
+            )
+            return
+        if payload:
+            self.reanalysis_requested.emit(payload)
 
     def _update_batch_tab(self, batch_rows: List[Dict[str, Any]]):
         self._current_batch_rows = batch_rows or []

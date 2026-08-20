@@ -1,11 +1,21 @@
 from pathlib import Path
 import sys
 
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from nanosense.utils.config_manager import get_default_settings
+
+
+_APP = QApplication.instance() or QApplication([])
 
 
 def test_default_settings_include_lspr_ai_workbench_keys():
@@ -150,6 +160,33 @@ def test_analysis_window_supports_selection_controls_and_plot_export():
     assert "_export_current_plot" in widget_source
     assert "_find_main_peak" in widget_source
     assert "_apply_comparison_result" in widget_source
+
+
+def test_analysis_window_selection_controls_change_real_item_state():
+    from nanosense.gui.lspr_ai_analysis_window import LSPRAIAnalysisWindow
+
+    window = LSPRAIAnalysisWindow(
+        spectra_data=[
+            {
+                "x": [500.0, 600.0, 700.0],
+                "y": [1.0, 2.0, 1.5],
+                "name": "demo-spectrum",
+            }
+        ],
+        service=object(),
+    )
+    try:
+        assert window.spectra_list_widget.count() == 1
+        item = window.spectra_list_widget.item(0)
+        assert item.checkState() == Qt.Checked
+
+        window.deselect_all_button.click()
+        assert item.checkState() == Qt.Unchecked
+        window.select_all_button.click()
+        assert item.checkState() == Qt.Checked
+        assert window.source_label.text() == "Source: preloaded"
+    finally:
+        window.close()
 
 
 def test_model_comparison_widget_exists_with_minimal_controls():

@@ -42,7 +42,6 @@ class FX2000Controller:
             # for endpoint in self.api_wrapper.EndPoints:
             #     if endpoint.Address > 0x80 and "Bulk" in str(endpoint.GetType()):
             #         self.in_endpoint = endpoint
-            #         print(f"已找到数据输入端点，地址: {hex(self.in_endpoint.Address)}")
             #         break
         else:  # 模拟API的属性是直接访问的
             self._name = self.api_wrapper.getName(self.device_index)

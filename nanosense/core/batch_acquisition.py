@@ -1345,7 +1345,7 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
                 else:
                     command = (queued_item, None)
             except queue.Empty:
-                print("Warning: preview loop exited but no command was queued.")
+                logger.warning("event=batch_preview_loop_exited_without_command")
         return last_spectrum, command[0], command[1]
 
     def _initialize_batch_records(self) -> None:
@@ -1371,8 +1371,8 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
                     operator=self.operator or "",
                     notes=notes,
                 )
-            except Exception as exc:
-                print(f"鍒濆鍖栨壒閲忚繍琛屽け璐? {exc}")
+            except Exception:
+                logger.exception("event=batch_run_initialization_failed")
                 self.batch_run_id = None
         if not self.batch_run_id:
             return
@@ -1392,8 +1392,8 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
                 self.batch_run_id,
                 item_payload,
             )
-        except Exception as exc:
-            print(f"鍒涘缓鎵归噺瀛斾綅鏄庣粏澶辫触: {exc}")
+        except Exception:
+            logger.exception("event=batch_item_details_create_failed")
             self.batch_item_map = {}
 
     def _ensure_well_experiment(self, well_id: str) -> Optional[int]:
@@ -1490,8 +1490,8 @@ class BatchAcquisitionWorker(SafeEmitMixin, QObject):
                 self.spectrum_registry[well_id][bucket].append(spectrum_id)
 
             return spectrum_id
-        except Exception as e:
-            print(f"淇濆瓨鎵归噺鍏夎氨鍒版暟鎹簱澶辫触: {e}")
+        except Exception:
+            logger.exception("event=batch_spectrum_persist_failed")
             return None
 
 

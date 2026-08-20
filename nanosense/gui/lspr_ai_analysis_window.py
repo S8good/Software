@@ -261,18 +261,18 @@ class LSPRAIAnalysisWindow(QMainWindow):
 
     def _add_spectrum(self, wavelengths, intensities, name, metadata=None):
         key = f"{name}___{len(self.spectra)}"
-        item = QListWidgetItem(name)
-        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-        item.setCheckState(Qt.Checked)
-        item.setData(Qt.UserRole, key)
-        self.spectra_list_widget.addItem(item)
-        self.analysis_target_combo.addItem(name, key)
         self.spectra[key] = {
             "name": name,
             "x": np.asarray(wavelengths, dtype=float),
             "y": np.asarray(intensities, dtype=float),
             "metadata": dict(metadata or {}),
         }
+        item = QListWidgetItem(name)
+        item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+        item.setCheckState(Qt.Checked)
+        item.setData(Qt.UserRole, key)
+        self.spectra_list_widget.addItem(item)
+        self.analysis_target_combo.addItem(name, key)
 
     def _import_spectrum_file(self):
         default_load_path = self.config.get("default_load_path", "")

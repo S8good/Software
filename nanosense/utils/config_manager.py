@@ -1,5 +1,9 @@
 import json
 import os
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".nanosense")
@@ -91,7 +95,7 @@ def load_settings():
             save_settings(settings)
         return settings
     except (json.JSONDecodeError, IOError) as exc:
-        print(f"Failed to load config: {exc}")
+        logger.exception("event=config_load_failed")
         return defaults
 
 
@@ -102,4 +106,4 @@ def save_settings(settings):
         with open(CONFIG_FILE, "w", encoding="utf-8") as handle:
             json.dump(settings, handle, indent=4)
     except IOError as exc:
-        print(f"Failed to save config: {exc}")
+        logger.exception("event=config_save_failed")

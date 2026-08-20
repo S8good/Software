@@ -1,6 +1,10 @@
 import numpy as np
 import colour
 import inspect
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 def calculate_colorimetric_values(wavelengths, spectral_data, illuminant='D65', observer='2'):
     """
@@ -68,7 +72,7 @@ def calculate_colorimetric_values(wavelengths, spectral_data, illuminant='D65', 
             else:
                 hunter_lab = colour.XYZ_to_Hunter_Lab(xyz, xyz_n)
         except Exception as e:
-            print(f"警告: Hunter Lab 计算失败 ({e})，结果使用 NaN。")
+            logger.exception("event=colorimetry_hunter_lab_failed fallback=nan")
             hunter_lab = np.array([np.nan, np.nan, np.nan])
 
         # ===== 7. xy 色度坐标 =====
@@ -95,7 +99,7 @@ def calculate_colorimetric_values(wavelengths, spectral_data, illuminant='D65', 
                     uv = np.array([u, v])
                     uvp = np.array([(4 * X) / denom, (9 * Y) / denom])
         except Exception as e:
-            print(f"警告: UV 计算失败 ({e})，使用 NaN。")
+            logger.exception("event=colorimetry_uv_failed fallback=nan")
             uv = np.array([np.nan, np.nan])
             uvp = np.array([np.nan, np.nan])
 
@@ -112,5 +116,5 @@ def calculate_colorimetric_values(wavelengths, spectral_data, illuminant='D65', 
         return results
 
     except Exception as e:
-        print(f"色度学计算时发生严重错误: {e}")
+        logger.exception("event=colorimetry_calculation_failed")
         return {}

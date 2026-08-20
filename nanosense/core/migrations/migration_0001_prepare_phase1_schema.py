@@ -15,7 +15,10 @@ import sqlite3
 from datetime import datetime
 from typing import Iterable, List, Optional, Tuple
 
+from nanosense.utils.logging_config import get_logger
+
 MIGRATION_ID = "0001_prepare_phase1_schema"
+logger = get_logger(__name__)
 
 
 # -----------------------------------------------------------------------------
@@ -755,7 +758,11 @@ def _migrate_spectra(conn: sqlite3.Connection) -> None:
         else:
             skipped += 1
 
-    print(f"[Database] Spectra migration completed: migrated={migrated}, skipped={skipped}")
+    logger.info(
+        "event=spectra_migration_completed migrated=%s skipped=%s",
+        migrated,
+        skipped,
+    )
 
 
 def _migrate_analysis_results(conn: sqlite3.Connection) -> None:
@@ -923,7 +930,11 @@ def _migrate_analysis_results(conn: sqlite3.Connection) -> None:
         )
         migrated += 1
 
-    print(f"[Database] Analysis migration completed: migrated={migrated}, skipped={skipped}")
+    logger.info(
+        "event=analysis_migration_completed migrated=%s skipped=%s",
+        migrated,
+        skipped,
+    )
 
 
 # -----------------------------------------------------------------------------

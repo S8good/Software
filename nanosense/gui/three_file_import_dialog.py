@@ -8,7 +8,12 @@ import pyqtgraph as pg
 from nanosense.utils.file_io import load_spectrum
 from nanosense.utils.config_manager import load_settings
 from nanosense.utils.plot_theme import apply_plot_theme, get_plot_theme
+from nanosense.utils.logging_config import get_logger
+from nanosense.utils.ui_feedback import show_status_message
 import os
+
+
+logger = get_logger(__name__)
 
 
 class ThreeFileImportDialog(QDialog):
@@ -158,6 +163,7 @@ class ThreeFileImportDialog(QDialog):
                 self.result_curve.setPen(pg.mkPen('y', width=2))
         except Exception:
             # 如果无法加载设置，使用默认样式
+            logger.warning("event=plot_theme_fallback reason=settings_unavailable", exc_info=True)
             pass
 
     def load_file(self, file_type):
@@ -200,7 +206,11 @@ class ThreeFileImportDialog(QDialog):
             self.result_data = (s_x, result_y_absorbance)
             self.result_curve.setData(self.result_data[0], self.result_data[1])
             # 【修改】使用tr()翻译打印信息
-            print(self.tr("Absorbance spectrum calculated and previewed."))
+            show_status_message(
+                self,
+                self.tr("Absorbance spectrum calculated and previewed."),
+                event_logger=logger,
+            )
 
     def get_data(self):
         return {

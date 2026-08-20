@@ -27,6 +27,11 @@ from .single_plot_window import SinglePlotWindow
 from ..core.kinetics_metadata import CANCER_BIOMARKERS
 from ..utils.config_manager import load_settings
 from ..utils.plot_theme import apply_plot_theme, get_plot_theme
+from ..utils.logging_config import get_logger
+from ..utils.ui_feedback import show_status_message
+
+
+logger = get_logger(__name__)
 
 
 class SummaryPopoutWindow(QMainWindow):
@@ -908,8 +913,11 @@ CollapsibleBox > QToolButton:hover {
         if self.peak_shift_time_data:
             self.peak_shift_time_data = self.peak_shift_time_data[::2]
             self.peak_shift_values = self.peak_shift_values[::2]
-        print(f"[kinetics] 数据点超过 {limit}，已做 2:1 抽稀，"
-              f"当前 {len(self.kinetics_time_data)} 点。")
+        logger.info(
+            "event=kinetics_data_downsampled limit=%s current_points=%s",
+            limit,
+            len(self.kinetics_time_data),
+        )
 
     def _rebuild_peak_shift_curve(self):
         if self.baseline_peak_wavelength is None:
@@ -1080,9 +1088,26 @@ CollapsibleBox > QToolButton:hover {
                 self.baseline_spinbox.setValue(self.baseline_peak_wavelength)
                 self.baseline_spinbox.blockSignals(block)
                 self._update_baseline_status()
-                print(f"基线光谱已捕获，波长范围: {self.baseline_spectrum_x[0]:.1f}-{self.baseline_spectrum_x[-1]:.1f} nm，基线峰值: {self.baseline_peak_wavelength:.2f} nm")
+                show_status_message(
+                    self,
+                    self.tr(
+                        "Baseline spectrum captured, range: {0:.1f}-{1:.1f} nm, "
+                        "baseline peak: {2:.2f} nm"
+                    ).format(
+                        self.baseline_spectrum_x[0],
+                        self.baseline_spectrum_x[-1],
+                        self.baseline_peak_wavelength,
+                    ),
+                    event_logger=logger,
+                )
             else:
-                print(f"基线光谱已捕获，波长范围: {self.baseline_spectrum_x[0]:.1f}-{self.baseline_spectrum_x[-1]:.1f} nm")
+                show_status_message(
+                    self,
+                    self.tr("Baseline spectrum captured, range: {0:.1f}-{1:.1f} nm").format(
+                        self.baseline_spectrum_x[0], self.baseline_spectrum_x[-1]
+                    ),
+                    event_logger=logger,
+                )
             
             # 获取measurement_widget (可能是main_window本身或其子组件)
             measurement_widget = None
@@ -1096,7 +1121,11 @@ CollapsibleBox > QToolButton:hover {
                 analysis_start = measurement_widget.analysis_start_spinbox.value()
                 analysis_end = measurement_widget.analysis_end_spinbox.value()
                 self.comparison_plot.setXRange(analysis_start, analysis_end, padding=0.02)
-                print(f"光谱对比图X轴范围设置为: {analysis_start:.1f}-{analysis_end:.1f} nm")
+                logger.info(
+                    "event=kinetics_comparison_range_updated start=%.1f end=%.1f",
+                    analysis_start,
+                    analysis_end,
+                )
         
         # 更新实时光谱
         if result_x is not None and result_y is not None:

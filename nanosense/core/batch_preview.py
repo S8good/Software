@@ -1,6 +1,10 @@
 """Pure helpers for batch acquisition live preview data."""
 
 import numpy as np
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 PREVIEW_EMIT_INTERVAL_S = 0.2
@@ -101,8 +105,8 @@ def apply_batch_preprocessing(absorbance, wavelengths, settings):
             if window > 1:
                 kernel = np.ones(window) / window
                 processed = np.convolve(processed, kernel, mode="same")
-    except Exception as exc:
-        print(f"Smoothing error: {exc}")
+    except Exception:
+        logger.exception("event=batch_preview_smoothing_failed")
 
     if not settings.get("baseline_enabled", False):
         return processed
@@ -128,8 +132,8 @@ def apply_batch_preprocessing(absorbance, wavelengths, settings):
         else:
             return processed
         processed = processed - baseline
-    except Exception as exc:
-        print(f"Baseline correction error: {exc}")
+    except Exception:
+        logger.exception("event=batch_preview_baseline_failed")
 
     return processed
 

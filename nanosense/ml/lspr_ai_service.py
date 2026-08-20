@@ -235,6 +235,9 @@ class LSPRAIService:
             bridge = LSPRMasterBridge(Path(root) if root else None)
             return bridge.list_available_model_modes()
         except Exception:
+            logger.exception(
+                "event=lspr_model_mode_discovery_failed fallback=auto"
+            )
             return ['auto']
 
     @_log_operation("predict_single_spectrum")

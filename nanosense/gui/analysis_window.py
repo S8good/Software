@@ -32,6 +32,11 @@ from .collapsible_box import CollapsibleBox
 from .preprocessing_dialog import PreprocessingDialog
 from ..utils.config_manager import load_settings
 from ..utils.plot_theme import apply_plot_theme, configure_pyqtgraph_theme, get_plot_theme
+from ..utils.logging_config import get_logger
+from ..utils.ui_feedback import show_status_message
+
+
+logger = get_logger(__name__)
 
 
 def _as_finite_float(value):
@@ -449,7 +454,7 @@ class SummaryReportWorker(QThread):
         except Exception as e:
             import traceback
             error_message = f"An error occurred while generating the summary report: {e}\n{traceback.format_exc()}"
-            print(error_message)
+            logger.exception("event=summary_report_failed")
             self.finished.emit(error_message, "")
 
     def _generate_overlay_plot(self, output_folder, min_wl, max_wl, peak_metrics=None):
@@ -536,7 +541,7 @@ class SummaryReportWorker(QThread):
             draw_overlay("peak_marked_overlay.png", "Peak-Marked Overlay Spectrum", mark_peaks=True)
             
         except Exception as e:
-            print(f"Warning: Failed to generate overlay plot with matplotlib: {e}")
+            logger.exception("event=overlay_plot_failed")
             # 如果 matplotlib 失败，跳过图片生成（或使用 pyqtgraph 作为后备）
 
 class AverageCalculator(QThread):
@@ -551,7 +556,7 @@ class AverageCalculator(QThread):
             average_y = np.mean(self.spectra_y_list, axis=0)
             self.finished.emit(average_y)
         except Exception as e:
-            print(f"计算平均值时发生错误: {e}")
+            logger.exception("event=average_spectrum_calculation_failed")
             self.finished.emit(None)
 
 DEFAULT_CURVES_TO_DISPLAY = 20
@@ -1338,7 +1343,7 @@ class AnalysisWindow(QMainWindow):
         """当用户点击“自动范围”按钮时，此槽函数被调用。"""
         self.user_has_interacted_with_plot = False
         self.plot_widget.autoRange()
-        print("视图已重置，自动缩放已恢复。")
+        show_status_message(self, self.tr("View reset; automatic scaling restored."), event_logger=logger)
 
     def changeEvent(self, event):
         if event.type() == QEvent.LanguageChange:
@@ -1639,7 +1644,7 @@ class AnalysisWindow(QMainWindow):
         # 2. 创建掩码并裁切数据
         region_indices = np.where((x_data >= min_wl) & (x_data <= max_wl))[0]
         if len(region_indices) < 3:
-            print(self.tr("Too few data points in the selected find range."))
+            show_status_message(self, self.tr("Too few data points in the selected find range."), event_logger=logger)
             return
 
         x_subset = x_data[region_indices]
@@ -1651,7 +1656,11 @@ class AnalysisWindow(QMainWindow):
         if peak_wavelength is None:
             self.main_peak_wavelength_label.setText(self.tr("Not Found"))
             self.main_peak_intensity_label.setText(self.tr("Not Found"))
-            print(self.tr("Main resonance peak not found with current settings in the selected region."))
+            show_status_message(
+                self,
+                self.tr("Main resonance peak not found with current settings in the selected region."),
+                event_logger=logger,
+            )
             return
 
         if subset_index is None or subset_index < 0 or subset_index >= len(x_subset):
@@ -1677,11 +1686,19 @@ class AnalysisWindow(QMainWindow):
             except Exception:
                 self.main_peak_fwhm_label.setText(self.tr("Error"))
 
-            print(self.tr("Found main resonance peak @ {0:.2f} nm, Intensity: {1:.2f}").format(peak_x, peak_y))
+            show_status_message(
+                self,
+                self.tr("Found main resonance peak @ {0:.2f} nm, Intensity: {1:.2f}").format(peak_x, peak_y),
+                event_logger=logger,
+            )
         else:
             self.main_peak_wavelength_label.setText(self.tr("Not Found"))
             self.main_peak_intensity_label.setText(self.tr("Not Found"))
-            print(self.tr("Main resonance peak not found with current settings in the selected region."))
+            show_status_message(
+                self,
+                self.tr("Main resonance peak not found with current settings in the selected region."),
+                event_logger=logger,
+            )
 
     def _trigger_summary_report(self):
         if self.report_worker and self.report_worker.isRunning():
@@ -2117,7 +2134,10 @@ class AnalysisWindow(QMainWindow):
             
             self._apply_metrics_table_theme(theme)
         except Exception:
-            pass  # 忽略错误
+            logger.warning(
+                "event=analysis_plot_theme_update_failed reason=settings_unavailable",
+                exc_info=True,
+            )
 
     def _apply_metrics_table_theme(self, theme):
         if not self.metrics_table:

@@ -15,7 +15,7 @@ from .noise_tools import RealTimeNoiseWorker, NoiseResultDialog
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QGroupBox, QFormLayout, QSpinBox, QDoubleSpinBox, QGridLayout,
                              QComboBox, QDialog, QMessageBox, QToolButton, QProgressDialog, QFileDialog,
-                             QCheckBox)
+                             QCheckBox, QInputDialog)
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 
 import pyqtgraph as pg
@@ -46,8 +46,14 @@ from nanosense.core.controller import FX2000Controller
 from nanosense.utils.file_io import save_spectrum, load_spectrum, save_all_spectra_to_file
 from nanosense.utils.config_manager import load_settings
 from nanosense.utils.plot_theme import apply_plot_theme, get_plot_theme, set_plot_legend_visible
+from nanosense.utils.logging_config import get_logger
+from nanosense.utils.ui_feedback import show_status_message
 from nanosense.core.spectrum_processor import SpectrumProcessor
+from nanosense.core.quality_control import run_quality_checks, summarize_quality
 from nanosense.core.acquisition import AcquisitionService, AcquisitionState
+
+
+logger = get_logger(__name__)
 
 class MeasurementWidget(QWidget):
     kinetics_data_updated = pyqtSignal(dict)
@@ -117,6 +123,7 @@ class MeasurementWidget(QWidget):
         
         # 初始化处理器的平滑参数
         self._update_smoothing_params()
+        self._refresh_processing_methods()
         # 旧的 _update_plot_x_range() 已移除，现在由 analysis_range 统一管理
 
     def init_ui(self):
@@ -313,6 +320,26 @@ class MeasurementWidget(QWidget):
         self.params_layout.addRow(self.baseline_group)
         self.params_layout.addRow(self.baseline_correction_button)
         self.params_layout.addRow(self.raman_preprocessing_group)
+
+        self.processing_method_group = QGroupBox(self.tr("Processing Methods"))
+        processing_method_layout = QVBoxLayout(self.processing_method_group)
+        self.processing_method_combo = QComboBox()
+        self.processing_method_combo.addItem(self.tr("Current settings (unsaved)"), None)
+        processing_method_layout.addWidget(self.processing_method_combo)
+        processing_method_buttons = QHBoxLayout()
+        self.save_processing_method_button = QPushButton(self.tr("Save Current Method"))
+        self.apply_processing_method_button = QPushButton(self.tr("Apply Selected Method"))
+        processing_method_buttons.addWidget(self.save_processing_method_button)
+        processing_method_buttons.addWidget(self.apply_processing_method_button)
+        processing_method_layout.addLayout(processing_method_buttons)
+        self.params_layout.addRow(self.processing_method_group)
+
+        self.quality_group = QGroupBox(self.tr("Quality Control"))
+        quality_layout = QVBoxLayout(self.quality_group)
+        self.quality_summary_label = QLabel(self.tr("No quality result yet."))
+        self.quality_summary_label.setWordWrap(True)
+        quality_layout.addWidget(self.quality_summary_label)
+        self.params_layout.addRow(self.quality_group)
         
         # 统一的分析范围设置
         self.analysis_range_group = QGroupBox(self.tr("Analysis Range"))
@@ -877,7 +904,7 @@ class MeasurementWidget(QWidget):
 
     def _find_all_peaks(self):
         if self.full_result_y is None:
-            print(self.tr("Peak finding failed: No valid data in the result plot."))
+            show_status_message(self, self.tr("Peak finding failed: No valid data in the result plot."), event_logger=logger)
             self._refresh_raman_workflow()
             return
 
@@ -888,7 +915,7 @@ class MeasurementWidget(QWidget):
         max_wl = self.analysis_end_spinbox.value()
         region_indices = np.where((x_data >= min_wl) & (x_data <= max_wl))[0]
         if len(region_indices) < 3:
-            print(self.tr("Too few data points in the selected region to find peaks."))
+            show_status_message(self, self.tr("Too few data points in the selected region to find peaks."), event_logger=logger)
             self.peak_markers.clear()
             self.latest_peak_metrics = None
             self._refresh_raman_workflow()
@@ -906,7 +933,11 @@ class MeasurementWidget(QWidget):
             fwhms = calculate_fwhm(display_x_data, y_data, indices_global)
 
             self.peak_markers.setData(peak_x, peak_y)
-            print(self.tr("Found {0} peaks in the selected region.").format(len(indices_global)))
+            show_status_message(
+                self,
+                self.tr("Found {0} peaks in the selected region.").format(len(indices_global)),
+                event_logger=logger,
+            )
 
             position_label, fwhm_label = self._peak_axis_labels()
             self._cache_peak_metrics(peak_x, peak_y, fwhms)
@@ -922,12 +953,16 @@ class MeasurementWidget(QWidget):
         else:
             self.peak_markers.clear()
             self.latest_peak_metrics = None
-            print(self.tr("No peaks found with the current settings in the selected region."))
+            show_status_message(
+                self,
+                self.tr("No peaks found with the current settings in the selected region."),
+                event_logger=logger,
+            )
         self._refresh_raman_workflow()
 
     def _find_main_resonance_peak(self):
         if self.full_result_y is None:
-            print(self.tr("Finding main peak failed: No valid data in the result plot."))
+            show_status_message(self, self.tr("Finding main peak failed: No valid data in the result plot."), event_logger=logger)
             return
 
         x_data, y_data = self.full_result_x, self.full_result_y
@@ -937,7 +972,7 @@ class MeasurementWidget(QWidget):
         max_wl = self.analysis_end_spinbox.value()
         region_indices = np.where((x_data >= min_wl) & (x_data <= max_wl))[0]
         if len(region_indices) < 3:
-            print(self.tr("Too few data points in the selected region."))
+            show_status_message(self, self.tr("Too few data points in the selected region."), event_logger=logger)
             self.main_peak_marker.clear()
             return
 
@@ -963,12 +998,22 @@ class MeasurementWidget(QWidget):
             self.main_peak_wavelength_label.setText(f"{peak_x:.4f}")
             self.main_peak_intensity_label.setText(f"{peak_y:.4f}")
             axis_unit = "cm^-1" if self._is_raman_wavenumber_display() else "nm"
-            print(self.tr("Found main resonance peak @ {0:.2f} {1}, Intensity: {2:.2f}").format(peak_x, axis_unit, peak_y))
+            show_status_message(
+                self,
+                self.tr("Found main resonance peak @ {0:.2f} {1}, Intensity: {2:.2f}").format(
+                    peak_x, axis_unit, peak_y
+                ),
+                event_logger=logger,
+            )
         else:
             self.main_peak_marker.clear()
             self.main_peak_wavelength_label.setText(self.tr("Not Found"))
             self.main_peak_intensity_label.setText(self.tr("Not Found"))
-            print(self.tr("Main resonance peak not found with current settings in the selected region."))
+            show_status_message(
+                self,
+                self.tr("Main resonance peak not found with current settings in the selected region."),
+                event_logger=logger,
+            )
 
     def connect_signals(self):
         self.processor.background_updated.connect(self.update_background_plot)
@@ -994,6 +1039,8 @@ class MeasurementWidget(QWidget):
         # 波长/波数切换
         self.wavenumber_toggle.clicked.connect(self._toggle_wavelength_wavenumber)
         self.save_all_button.clicked.connect(self._save_all_spectra)
+        self.save_processing_method_button.clicked.connect(self._save_processing_method)
+        self.apply_processing_method_button.clicked.connect(self._apply_processing_method)
         
         # 连接基线校正参数信号
         self.baseline_enable_checkbox.stateChanged.connect(self._update_baseline_params)
@@ -1043,7 +1090,7 @@ class MeasurementWidget(QWidget):
     def _on_popout_closed(self, window_instance):
         """当独立窗口被关闭时，将其从更新列表中移除。"""
         self.popout_windows = [item for item in self.popout_windows if item['window'] is not window_instance]
-        print(self.tr("A pop-out plot window has been closed."))
+        show_status_message(self, self.tr("A pop-out plot window has been closed."), event_logger=logger)
 
     def _build_instrument_metadata(self):
         averaging = None
@@ -1138,11 +1185,123 @@ class MeasurementWidget(QWidget):
             if raman_metadata:
                 parameters['raman'] = raman_metadata
         parameters = {key: value for key, value in parameters.items() if value is not None}
-        return {
+        metadata = {
             'name': 'measurement_widget',
             'version': '1.0',
             'parameters': parameters
         }
+        active_method = getattr(self, "_active_processing_method", None)
+        comparable_parameters = dict(parameters)
+        comparable_parameters.pop("spectrum_role", None)
+        if (
+            active_method
+            and active_method.get("mode") == self.mode_name
+            and active_method.get("parameters") == comparable_parameters
+        ):
+            metadata["processing_config_id"] = active_method["processing_config_id"]
+        return metadata
+
+    def _refresh_processing_methods(self):
+        if not hasattr(self, "processing_method_combo"):
+            return
+        current_id = self.processing_method_combo.currentData()
+        self.processing_method_combo.blockSignals(True)
+        try:
+            self.processing_method_combo.clear()
+            self.processing_method_combo.addItem(
+                self.tr("Current settings (unsaved)"), None
+            )
+            if self.db_manager and hasattr(self.db_manager, "list_processing_methods"):
+                for method in self.db_manager.list_processing_methods(self.mode_name):
+                    label = f"{method['name']} v{method['version']}"
+                    self.processing_method_combo.addItem(
+                        label, method["processing_config_id"]
+                    )
+            if current_id is not None:
+                index = self.processing_method_combo.findData(current_id)
+                if index >= 0:
+                    self.processing_method_combo.setCurrentIndex(index)
+        finally:
+            self.processing_method_combo.blockSignals(False)
+
+    def _save_processing_method(self):
+        if not self.db_manager:
+            show_status_message(self, self.tr("Database is not available."), event_logger=logger)
+            return
+        name, accepted = QInputDialog.getText(
+            self,
+            self.tr("Save Processing Method"),
+            self.tr("Method name:"),
+        )
+        if not accepted or not name.strip():
+            return
+        metadata = self._build_processing_metadata()
+        parameters = metadata.get("parameters", {})
+        method_id = self.db_manager.create_processing_method(
+            name=name.strip(),
+            mode=self.mode_name,
+            parameters=parameters,
+        )
+        if method_id is None:
+            QMessageBox.warning(self, self.tr("Save Failed"), self.tr("Processing method could not be saved."))
+            return
+        self._active_processing_method = self.db_manager.get_processing_method(method_id)
+        self._refresh_processing_methods()
+        index = self.processing_method_combo.findData(method_id)
+        if index >= 0:
+            self.processing_method_combo.setCurrentIndex(index)
+        show_status_message(self, self.tr("Processing method saved."), event_logger=logger)
+
+    def _apply_processing_method(self):
+        if not self.db_manager:
+            return
+        method_id = self.processing_method_combo.currentData()
+        if method_id is None:
+            return
+        method = self.db_manager.get_processing_method(method_id)
+        if not method:
+            return
+        if method.get("mode") and method["mode"] != self.mode_name:
+            QMessageBox.warning(
+                self,
+                self.tr("Method Mode Mismatch"),
+                self.tr("This method belongs to {0}, not {1}.").format(
+                    method["mode"], self.mode_name
+                ),
+            )
+            return
+        parameters = method.get("parameters", {})
+        self._active_processing_method = method
+        combo_values = (
+            ("smooth_method_combo", "smoothing_method"),
+            ("baseline_algorithm_combo", "baseline_algorithm"),
+        )
+        for widget_name, parameter_name in combo_values:
+            widget = getattr(self, widget_name, None)
+            value = parameters.get(parameter_name)
+            if widget is not None and value is not None:
+                index = widget.findText(str(value))
+                if index >= 0:
+                    widget.setCurrentIndex(index)
+        value_map = (
+            ("smoothing_window_spinbox", "smoothing_window"),
+            ("poly_order_spinbox", "smoothing_order"),
+            ("baseline_lambda_spinbox", "baseline_lambda"),
+            ("baseline_p_spinbox", "baseline_p"),
+            ("baseline_niter_spinbox", "baseline_niter"),
+            ("peak_height_spinbox", "peak_height_threshold"),
+            ("analysis_start_spinbox", "analysis_start_nm"),
+            ("analysis_end_spinbox", "analysis_end_nm"),
+        )
+        for widget_name, parameter_name in value_map:
+            widget = getattr(self, widget_name, None)
+            value = parameters.get(parameter_name)
+            if widget is not None and value is not None:
+                widget.setValue(value)
+        baseline_enabled = parameters.get("baseline_enabled")
+        if baseline_enabled is not None:
+            self.baseline_enabled_checkbox.setChecked(bool(baseline_enabled))
+        show_status_message(self, self.tr("Processing method applied."), event_logger=logger)
 
     def _save_result_spectrum(self):
         """保存由寻峰范围选择器定义的数据区域。"""
@@ -1184,6 +1343,19 @@ class MeasurementWidget(QWidget):
                         y_data_sliced,
                         instrument_info=instrument_info,
                         processing_info=self._build_processing_metadata('Result'),
+                        quality_context={
+                            "mode": self.mode_name,
+                            "background": (
+                                self.processor.background_spectrum[wl_mask]
+                                if self.processor.background_spectrum is not None
+                                else None
+                            ),
+                            "reference": (
+                                self.processor.reference_spectrum[wl_mask]
+                                if self.processor.reference_spectrum is not None
+                                else None
+                            ),
+                        },
                     )
                     # 保存信号光谱（裁剪到分析范围）
                     if self.processor.latest_signal_spectrum is not None:
@@ -1218,12 +1390,17 @@ class MeasurementWidget(QWidget):
                             instrument_info=instrument_info,
                             processing_info=self._build_processing_metadata('Reference'),
                         )
-                    print(f"光谱数据已同步保存到数据库，实验ID: {experiment_id}，范围: {min_wl}-{max_wl} nm")
+                    logger.info(
+                        "event=spectrum_database_sync_completed experiment_id=%s range=%s-%s",
+                        experiment_id,
+                        min_wl,
+                        max_wl,
+                    )
                     QMessageBox.information(self, self.tr("Database Sync"),
                                             self.tr("Spectrum data has been successfully saved to file and database.\n"
                                                     "Experiment ID: {0}\nWavelength Range: {1}-{2} nm").format(experiment_id, min_wl, max_wl))
             except Exception as e:
-                print(f"同步到数据库时出错: {e}")
+                logger.exception("event=spectrum_database_sync_failed")
                 QMessageBox.warning(self, self.tr("Database Error"),
                                     self.tr("File saved, but an error occurred while syncing to the database:\n{0}")
                                     .format(str(e)))
@@ -1359,7 +1536,11 @@ class MeasurementWidget(QWidget):
         self.result_curve.clear()
         self.background_curve.clear()
         self.reference_curve.clear()
-        print(self.tr("Measurement page switched to: {0}").format(display_name))
+        show_status_message(
+            self,
+            self.tr("Measurement page switched to: {0}").format(display_name),
+            event_logger=logger,
+        )
         self._refresh_raman_workflow()
         self._toggle_acquisition(True)
 
@@ -1476,8 +1657,21 @@ class MeasurementWidget(QWidget):
         self.full_result_x = np.array(x_data)
         if y_data is not None:
             self.full_result_y = np.array(y_data)
+            self.latest_quality_checks = run_quality_checks(
+                self.full_result_x,
+                self.full_result_y,
+                mode=self.mode_name,
+                background=self.processor.background_spectrum,
+                reference=self.processor.reference_spectrum,
+            )
+            quality_summary = summarize_quality(self.latest_quality_checks)
+            self.quality_summary_label.setText(
+                self.tr("QC status: {0}").format(quality_summary)
+            )
         else:
             self.full_result_y = None
+            self.latest_quality_checks = []
+            self.quality_summary_label.setText(self.tr("No quality result yet."))
 
         if hasattr(self, 'set_baseline_button'):
             self.set_baseline_button.setEnabled(self.full_result_y is not None)
@@ -1633,7 +1827,12 @@ class MeasurementWidget(QWidget):
 
     def _on_acquisition_error(self, message):
         self._last_acquisition_error_message = message
-        print(self.tr("Acquisition error: {0}").format(message))
+        logger.error("event=acquisition_ui_error message=%s", message)
+        show_status_message(
+            self,
+            self.tr("Acquisition error: {0}").format(message),
+            event_logger=logger,
+        )
 
     def _on_acquisition_finished(self):
         if hasattr(self, "update_timer") and not self.is_acquiring:
@@ -1683,7 +1882,11 @@ class MeasurementWidget(QWidget):
         x_data, y_data, file_path = load_spectrum(self, default_load_path)
         if x_data is not None and y_data is not None:
             self.loaded_curve.setData(x_data, y_data)
-            print(self.tr("Comparison spectrum '{0}' loaded and displayed.").format(os.path.basename(file_path)))
+            show_status_message(
+                self,
+                self.tr("Comparison spectrum '{0}' loaded and displayed.").format(os.path.basename(file_path)),
+                event_logger=logger,
+            )
 
     def _set_kinetics_baseline_from_current_peak(self):
         """将当前结果谱的主峰设置为动力学基线�?"""
@@ -1708,7 +1911,11 @@ class MeasurementWidget(QWidget):
         if self.kinetics_window is not None:
             self.kinetics_window.set_baseline_peak_wavelength(self.kinetics_baseline_value)
 
-        print(self.tr("Kinetics baseline set to {0:.3f} nm.").format(self.kinetics_baseline_value))
+        show_status_message(
+            self,
+            self.tr("Kinetics baseline set to {0:.3f} nm.").format(self.kinetics_baseline_value),
+            event_logger=logger,
+        )
 
     def _on_kinetics_baseline_changed(self, baseline_value):
         """接收动力学窗口的基线更新并同步到测量页"""
@@ -1748,7 +1955,7 @@ class MeasurementWidget(QWidget):
             self.kinetics_window.raise_()
             self.kinetics_window.activateWindow()
 
-            print("Kinetics monitoring window opened.")
+            show_status_message(self, self.tr("Kinetics monitoring window opened."), event_logger=logger)
         else:
             # 已存在：若隐藏/最小化则复原，否则关闭
             if (not self.kinetics_window.isVisible()) or self.kinetics_window.isMinimized():
@@ -1853,7 +2060,11 @@ class MeasurementWidget(QWidget):
         if enhancement_factor is not None:
             # 显示结果
             self.sers_enhancement_label.setText(f"{enhancement_factor:.2e}")
-            print(self.tr("Calculated SERS enhancement factor: {0:.2e}").format(enhancement_factor))
+            show_status_message(
+                self,
+                self.tr("Calculated SERS enhancement factor: {0:.2e}").format(enhancement_factor),
+                event_logger=logger,
+            )
         else:
             QMessageBox.warning(self, self.tr("Error"), self.tr("Failed to calculate SERS enhancement factor"))
 
@@ -1875,7 +2086,7 @@ class MeasurementWidget(QWidget):
             self.database_peaks_label.setText(peaks_str)
             self.database_description_label.setText(substance_info["description"])
             self.database_match_label.setText("N/A")
-            print(self.tr("Found substance: {0}").format(substance_name))
+            show_status_message(self, self.tr("Found substance: {0}").format(substance_name), event_logger=logger)
         else:
             QMessageBox.warning(self, self.tr("Error"), self.tr("Substance not found in database"))
 
@@ -1920,7 +2131,13 @@ class MeasurementWidget(QWidget):
                     self.database_description_label.setText(best_match["description"])
                     self.database_match_label.setText(f"{best_match['match_score']:.2f}")
                     
-                    print(self.tr("Best match: {0} (Score: {1:.2f})").format(best_match["substance"], best_match["match_score"]))
+                    show_status_message(
+                        self,
+                        self.tr("Best match: {0} (Score: {1:.2f})").format(
+                            best_match["substance"], best_match["match_score"]
+                        ),
+                        event_logger=logger,
+                    )
                 else:
                     QMessageBox.information(self, self.tr("Information"), self.tr("No matches found in database"))
             else:
@@ -2179,7 +2396,7 @@ Do you wish to continue?'''),
             ]:
                 label.setStyleSheet(title_style)
         except Exception as exc:
-            print(f"更新测量页图表主题时出错: {exc}")
+            logger.exception("event=measurement_plot_theme_update_failed")
     
     def wavelength_to_raman_shift(self, wavelengths, excitation_wavelength):
         """

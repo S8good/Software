@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Dict, Any, Tuple
 import numpy as np
 from datetime import datetime
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 try:
     import openpyxl
@@ -77,7 +81,7 @@ class LSPRDataExporter:
             
             return True
         except Exception as e:
-            print(f"CSV 导出失败: {str(e)}")
+            logger.exception("event=lspr_csv_export_failed")
             return False
     
     def export_to_json(self, filepath: str, shift_matrix: np.ndarray,
@@ -119,7 +123,7 @@ class LSPRDataExporter:
             
             return True
         except Exception as e:
-            print(f"JSON 导出失败: {str(e)}")
+            logger.exception("event=lspr_json_export_failed")
             return False
     
     def export_to_excel(self, filepath: str, shift_matrix: np.ndarray,
@@ -136,7 +140,7 @@ class LSPRDataExporter:
             是否成功导出
         """
         if not HAS_OPENPYXL:
-            print("需要安装 openpyxl 库: pip install openpyxl")
+            logger.error("event=lspr_excel_export_unavailable dependency=openpyxl")
             return False
         
         try:
@@ -196,7 +200,7 @@ class LSPRDataExporter:
             wb.save(filepath)
             return True
         except Exception as e:
-            print(f"Excel 导出失败: {str(e)}")
+            logger.exception("event=lspr_excel_export_failed")
             return False
     
     def export_heatmap_to_png(self, filepath: str, shift_matrix: np.ndarray,
@@ -213,7 +217,7 @@ class LSPRDataExporter:
             是否成功导出
         """
         if not HAS_PYQT:
-            print("需要 PyQt5 和 PyQtGraph")
+            logger.error("event=lspr_png_export_unavailable dependency=pyqtgraph")
             return False
         
         try:
@@ -226,7 +230,7 @@ class LSPRDataExporter:
             img_view.export(filepath, toBytes=False, copy=False)
             return True
         except Exception as e:
-            print(f"PNG 导出失败: {str(e)}")
+            logger.exception("event=lspr_png_export_failed")
             return False
     
     def export_spectrum_to_csv(self, filepath: str, wavelengths: np.ndarray,
@@ -260,7 +264,7 @@ class LSPRDataExporter:
             
             return True
         except Exception as e:
-            print(f"光谱 CSV 导出失败: {str(e)}")
+            logger.exception("event=lspr_spectrum_csv_export_failed")
             return False
 
 

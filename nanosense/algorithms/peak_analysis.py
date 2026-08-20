@@ -3,6 +3,10 @@
 import numpy as np
 from scipy.signal import find_peaks
 from scipy.optimize import curve_fit
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 PEAK_METHOD_LABELS = {
     'highest_point': 'Highest Point',
@@ -24,7 +28,7 @@ def find_spectral_peaks(y_data, min_height=None, min_distance=None):
         indices, properties = find_peaks(y_data, height=min_height, distance=min_distance)
         return indices, properties
     except Exception as e:
-        print(f"寻峰时发生错误: {e}")
+        logger.exception("event=peak_detection_failed")
         return np.array([]), {}
 
 def calculate_fwhm(x_data, y_data, peak_indices):
@@ -200,7 +204,7 @@ def calculate_centroid(wavelengths, intensities):
         return centroid_wavelength
 
     except Exception as e:
-        print(f"计算质心时发生错误: {e}")
+        logger.exception("event=centroid_calculation_failed")
         return None
 
 def gaussian(x, amplitude, center, sigma):
@@ -246,10 +250,10 @@ def fit_peak_gaussian(wavelengths, intensities):
         }
 
     except RuntimeError:
-        print("高斯拟合失败：无法收敛。")
+        logger.warning("event=gaussian_fit_failed reason=not_converged")
         return None
     except Exception as e:
-        print(f"高斯拟合时发生错误: {e}")
+        logger.exception("event=gaussian_fit_failed")
         return None
 
 
@@ -377,7 +381,7 @@ def estimate_peak_position(wavelengths, intensities, method='highest_point'):
             return index, float(wavelengths_arr[index])
 
     except Exception as exc:
-        print(f"estimate_peak_position failed: {exc}")
+        logger.exception("event=peak_position_estimation_failed")
 
     return None, None
 
@@ -482,15 +486,15 @@ def calculate_sers_enhancement_factor(sers_intensities, reference_intensities,
     """
     try:
         if sers_intensities is None or reference_intensities is None:
-            print("错误: 缺少光谱数据")
+            logger.warning("event=sers_enhancement_rejected reason=missing_spectrum_data")
             return None
         
         if len(sers_intensities) == 0 or len(reference_intensities) == 0:
-            print("错误: 光谱数据为空")
+            logger.warning("event=sers_enhancement_rejected reason=empty_spectrum_data")
             return None
         
         if sers_concentration <= 0 or reference_concentration <= 0:
-            print("错误: 浓度必须大于0")
+            logger.warning("event=sers_enhancement_rejected reason=non_positive_concentration")
             return None
         
         if method == 'peak_height':
@@ -499,7 +503,7 @@ def calculate_sers_enhancement_factor(sers_intensities, reference_intensities,
             reference_peak = np.max(reference_intensities)
             
             if reference_peak == 0:
-                print("错误: 参考光谱峰高为0")
+                logger.warning("event=sers_enhancement_rejected reason=zero_reference_peak")
                 return None
             
             # 增强因子计算公式: EF = (I_sers / C_sers) / (I_ref / C_ref)
@@ -511,18 +515,18 @@ def calculate_sers_enhancement_factor(sers_intensities, reference_intensities,
             reference_area = np.sum(reference_intensities)
             
             if reference_area == 0:
-                print("错误: 参考光谱面积为0")
+                logger.warning("event=sers_enhancement_rejected reason=zero_reference_area")
                 return None
             
             # 增强因子计算公式: EF = (A_sers / C_sers) / (A_ref / C_ref)
             enhancement_factor = (sers_area / sers_concentration) / (reference_area / reference_concentration)
             
         else:
-            print(f"错误: 不支持的计算方法: {method}")
+            logger.warning("event=sers_enhancement_rejected reason=unsupported_method method=%s", method)
             return None
         
         return float(enhancement_factor)
         
     except Exception as e:
-        print(f"计算SERS增强因子时发生错误: {e}")
+        logger.exception("event=sers_enhancement_failed")
         return None

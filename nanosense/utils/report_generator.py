@@ -17,6 +17,10 @@ from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import parse_xml
 from nanosense.algorithms.peak_analysis import find_main_resonance_peak, calculate_fwhm
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def run_analysis_pipeline(wavelengths, spectra_df):
@@ -71,6 +75,7 @@ def run_analysis_pipeline(wavelengths, spectra_df):
             'full_spectra_df': pd.concat([pd.DataFrame({'Wavelength (nm)': wavelengths}), spectra_df], axis=1)
         }
     except Exception as e:
+        logger.exception("event=report_analysis_failed")
         return {'error': str(e)}
 
 
@@ -171,11 +176,11 @@ def generate_pdf_report(report_subfolder, input_filename, analysis_results):
         
         # 构建PDF
         doc.build(story)
-        print(f"PDF报告已保存至: {pdf_path}")
+        logger.info("event=pdf_report_generated filename=%s", os.path.basename(pdf_path))
         return pdf_path
         
     except Exception as e:
-        print(f"生成PDF报告时出错: {e}")
+        logger.exception("event=pdf_report_failed")
         return None
 
 
@@ -284,22 +289,22 @@ def generate_word_report(report_subfolder, input_filename, analysis_results):
             last_paragraph = doc.paragraphs[-1]
             last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
         except Exception as img_err:
-            print(f"添加图片到Word文档时出错: {img_err}")
+            logger.exception("event=word_report_image_failed")
         
         doc.save(word_path)
-        print(f"Word报告已保存至: {word_path}")
+        logger.info("event=word_report_generated filename=%s", os.path.basename(word_path))
         
         # 清理临时图表文件
         try:
             if os.path.exists(spectrum_plot_path):
                 os.remove(spectrum_plot_path)
-        except:
+        except Exception:
             pass
         
         return word_path
         
     except Exception as e:
-        print(f"生成Word报告时出错: {e}")
+        logger.exception("event=word_report_failed")
         return None
 
 
@@ -323,7 +328,7 @@ def generate_reports(input_path, output_folder, analysis_results, generate_csv, 
                 analysis_results['average_spectrum_df'].to_excel(writer, sheet_name='Average Spectrum Data',
                                                                  index=False)
                 analysis_results['full_spectra_df'].to_excel(writer, sheet_name='All Spectra Data', index=False)
-            print(f"Excel 报告已保存至: {excel_path}")
+            logger.info("event=excel_report_generated filename=%s", os.path.basename(excel_path))
 
         # --- 生成 PDF 报告 ---
         if generate_pdf:
@@ -334,4 +339,4 @@ def generate_reports(input_path, output_folder, analysis_results, generate_csv, 
             generate_word_report(report_subfolder, input_filename, analysis_results)
 
     except Exception as e:
-        print(f"生成报告时发生错误: {e}")
+        logger.exception("event=report_generation_failed")

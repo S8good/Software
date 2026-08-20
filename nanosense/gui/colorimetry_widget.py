@@ -10,6 +10,11 @@ import pyqtgraph as pg
 from nanosense.algorithms.colorimetry import calculate_colorimetric_values
 # 【新增】导入我们通用的文件加载函数
 from nanosense.utils.file_io import load_spectrum_from_path
+from nanosense.utils.logging_config import get_logger
+from nanosense.utils.ui_feedback import show_status_message
+
+
+logger = get_logger(__name__)
 
 
 class ColorimetryWidget(QWidget):
@@ -127,8 +132,13 @@ class ColorimetryWidget(QWidget):
             self._update_plot()
             self._calculate_and_display_results()
 
-            print(f"Spectrum data loaded from {file_path}.")
+            show_status_message(
+                self,
+                self.tr("Spectrum data loaded from {0}.").format(os.path.basename(file_path)),
+                event_logger=logger,
+            )
         except Exception as e:
+            logger.exception("event=colorimetry_spectrum_load_failed")
             QMessageBox.critical(self, self.tr("Error"), self.tr("Error loading spectrum file: {0}").format(str(e)))
 
     def _update_plot(self):
@@ -149,7 +159,13 @@ class ColorimetryWidget(QWidget):
         for i, (param, value) in enumerate(results.items()):
             self.results_table.setItem(i, 0, QTableWidgetItem(param))
             self.results_table.setItem(i, 1, QTableWidgetItem(f"{value:.4f}"))
-        print(f"Colorimetric parameters calculated using illuminant {illuminant} and {observer}° observer.")
+        show_status_message(
+            self,
+            self.tr("Colorimetric parameters calculated using illuminant {0} and {1}° observer.").format(
+                illuminant, observer
+            ),
+            event_logger=logger,
+        )
 
     # ... _open_settings_dialog 和 _save_results_to_db 方法保持不变 ...
     def _open_settings_dialog(self):
@@ -185,6 +201,7 @@ class ColorimetryWidget(QWidget):
             self.save_to_db_button.setEnabled(False)
 
         except Exception as e:
+            logger.exception("event=colorimetry_database_save_failed")
             QMessageBox.critical(self, self.tr("Database Error"),
                                  self.tr("An error occurred while saving to the database:\n{0}").format(str(e)))
 

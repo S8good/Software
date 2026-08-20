@@ -3,6 +3,10 @@
 
 from scipy.optimize import curve_fit
 import numpy as np
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def calculate_sensitivity(x_values, y_values):
@@ -62,7 +66,7 @@ def calculate_affinity_kd(concentrations, responses):
             'r_squared': r_squared
         }
     except Exception as e:
-        print(f"Affinity fit failed: {e}")
+        logger.exception("event=affinity_fit_failed")
         return None
 
 
@@ -109,5 +113,5 @@ def fit_hill_equation(concentrations, responses):
             'r_squared': r_squared
         }
     except Exception as e:
-        print(f"Hill equation fit failed: {e}")
+        logger.exception("event=hill_fit_failed")
         return None

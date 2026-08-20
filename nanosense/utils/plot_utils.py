@@ -5,6 +5,11 @@
 """
 
 import pyqtgraph as pg
+import os
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def optimize_plot_performance(plot_widget, enable_downsampling=True, enable_clip=True, mode='peak'):
@@ -309,9 +314,12 @@ class InteractivePlotEnhancer:
             fig.savefig(file_path, format='png', dpi=300, bbox_inches='tight')
             plt.close(fig)
             
-            print(f"Academic style high-res image (300 DPI) exported to: {file_path}")
+            logger.info(
+                "event=publication_plot_exported filename=%s",
+                os.path.basename(file_path),
+            )
 
         except Exception as e:
-            print(f"Export failed: {e}")
+            logger.exception("event=publication_plot_export_failed")
             from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self.plot, "Export Error", f"Failed to export image:\n{str(e)}")

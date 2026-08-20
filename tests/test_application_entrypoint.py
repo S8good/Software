@@ -37,3 +37,10 @@ def test_importing_main_does_not_create_qapplication():
     result = run_python("-c", code)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "IMPORT_OK" in result.stdout
+
+
+def test_help_does_not_require_stdout(monkeypatch):
+    import main
+
+    monkeypatch.setattr(sys, "stdout", None)
+    assert main._run_application(["--help"]) == 0

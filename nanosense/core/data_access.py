@@ -5,8 +5,11 @@ Batch-friendly data access helpers for the database explorer.
 from __future__ import annotations
 
 import json
+import io
 import sqlite3
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+import numpy as np
 
 
 class DataAccessError(RuntimeError):
@@ -371,6 +374,66 @@ class ExplorerDataAccess:
             "instrument_temperature": row[11],
             "processing_name": row[12],
             "processing_version": row[13],
+        }
+
+    def fetch_spectrum_payload(self, spectrum_set_id: int) -> Optional[Dict[str, Any]]:
+        """Return immutable raw data plus provenance for a reanalysis action."""
+        cursor = self.conn.execute(
+            """
+            SELECT ss.spectrum_set_id,
+                   ss.experiment_id,
+                   ss.capture_label,
+                   ss.quality_flag,
+                   ss.processing_config_id,
+                   sd.wavelengths_blob,
+                   sd.intensities_blob,
+                   sd.storage_format,
+                   sd.hash,
+                   proc.name,
+                   proc.version,
+                   proc.fingerprint
+            FROM spectrum_sets ss
+            JOIN spectrum_data sd ON sd.data_id = ss.data_id
+            LEFT JOIN processing_snapshots proc
+              ON proc.processing_config_id = ss.processing_config_id
+            WHERE ss.spectrum_set_id = ?
+            """,
+            (spectrum_set_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        storage_format = row[7] or "json"
+
+        def decode_blob(blob):
+            raw = bytes(blob)
+            if storage_format == "json":
+                return json.loads(raw.decode("utf-8"))
+            return np.load(io.BytesIO(raw), allow_pickle=False).tolist()
+
+        wavelengths = decode_blob(row[5])
+        intensities = decode_blob(row[6])
+        return {
+            "spectrum_set_id": row[0],
+            "experiment_id": row[1],
+            "x": np.asarray(wavelengths, dtype=float),
+            "y": np.asarray(intensities, dtype=float),
+            "name": row[2] or f"Database Spectrum {row[0]}",
+            "metadata": {
+                "source": "database_explorer",
+                "source_type": "database_explorer",
+                "spectrum_set_id": row[0],
+                "experiment_id": row[1],
+                "processing_config_id": row[4],
+                "processing_method": {
+                    "name": row[9],
+                    "version": row[10],
+                    "fingerprint": row[11],
+                },
+                "quality_flag": row[3],
+                "source_fingerprint": row[8],
+            },
         }
 
     def fetch_lspr_ai_runs(self, experiment_id: int) -> List[Dict[str, Any]]:

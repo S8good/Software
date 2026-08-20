@@ -48,8 +48,12 @@ from ..utils.plot_theme import (
     apply_plot_theme_to_widget_tree,
     configure_pyqtgraph_theme,
 )
+from ..utils.logging_config import get_logger
 
 from PyQt5.QtCore import pyqtSignal, Qt, QTranslator
+
+
+logger = get_logger(__name__)
 
 
 class AppWindow(QMainWindow):
@@ -64,7 +68,11 @@ class AppWindow(QMainWindow):
 
         # 应用设置和翻译
         self.app_settings = load_settings()
-        print(f"加载的应用设置: {self.app_settings}")
+        logger.info(
+            "event=application_settings_loaded language=%s theme=%s",
+            self.app_settings.get("language", "en"),
+            self.app_settings.get("theme", "dark"),
+        )
         self.translator = None
         initial_language = self.app_settings.get('language', 'en')
         self.current_language = self._load_translator(initial_language)
@@ -72,7 +80,11 @@ class AppWindow(QMainWindow):
         # 硬件模式状态
         self.use_real_hardware = use_real_hardware
         self.hardware_vendor = hardware_vendor or ('ideaoptics' if use_real_hardware else 'mock')
-        print(f"硬件模式设置: {'真实硬件' if use_real_hardware else '模拟API'} (vendor={self.hardware_vendor})")
+        logger.info(
+            "event=hardware_mode_requested mode=%s vendor=%s",
+            "real" if use_real_hardware else "mock",
+            self.hardware_vendor,
+        )
         
         # 窗口和管理器
         self.analysis_windows = []
@@ -88,11 +100,14 @@ class AppWindow(QMainWindow):
         self._skip_spectrum_classification_prompt = False
         
         # 初始化数据库和项目
-        print("开始初始化数据库...")
+        logger.info("event=database_initialization_started")
         self._initialize_database()
-        print("开始查找或创建默认项目...")
+        logger.info("event=default_project_initialization_started")
         self._find_or_create_default_project()
-        print(f"数据库初始化完成，项目ID: {self.current_project_id}")
+        logger.info(
+            "event=database_initialization_completed project_id=%s",
+            self.current_project_id,
+        )
         
         # 直接在构造函数中尝试连接硬件
         requested_mode = self.use_real_hardware
@@ -127,21 +142,22 @@ class AppWindow(QMainWindow):
     def _initialize_database(self):
         """初始化数据库连接"""
         db_path = self.app_settings.get('database_path')
-        print(f"尝试初始化数据库连接，数据库路径: {db_path}")
+        logger.info("event=database_connection_attempted configured=%s", bool(db_path))
         if db_path:
             try:
                 self.db_manager = DatabaseManager(db_path)
-                print(f"数据库管理器已创建: {self.db_manager is not None}")
+                logger.info(
+                    "event=database_manager_created available=%s",
+                    self.db_manager is not None,
+                )
             except Exception as e:
-                print(f"创建数据库管理器时出错: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.exception("event=database_manager_create_failed")
                 self.db_manager = None
         else:
             warning_msg = self.tr(
                 "No database path was found in the configuration. Database features will be unavailable."
             )
-            print(warning_msg)
+            logger.warning("event=database_path_missing")
             QMessageBox.warning(
                 self,
                 self.tr("Database Warning"),
@@ -154,20 +170,27 @@ class AppWindow(QMainWindow):
     # 【新增】查询或创建默认项目
     def _find_or_create_default_project(self):
         """查询或创建默认项目"""
-        print(f"尝试查找或创建默认项目，数据库管理器状态: {self.db_manager is not None}")
+        logger.info(
+            "event=default_project_lookup_started database_available=%s",
+            self.db_manager is not None,
+        )
         if self.db_manager:
             project_name = "Default Project"
-            print(f"调用数据库管理器查找或创建项目: {project_name}")
+            logger.info("event=default_project_lookup project=%s", project_name)
             self.current_project_id = self.db_manager.find_or_create_project(
                 name=project_name,
                 description="Default project for general experiments."
             )
             if self.current_project_id is not None:
-                print(f"当前项目已设置为 '{project_name}' (ID: {self.current_project_id})")
+                logger.info(
+                    "event=default_project_ready project=%s project_id=%s",
+                    project_name,
+                    self.current_project_id,
+                )
             else:
-                print(f"无法创建或查找项目: {project_name}")
+                logger.error("event=default_project_unavailable project=%s", project_name)
         else:
-            print("数据库管理器未初始化，无法查找或创建项目")
+            logger.error("event=default_project_lookup_skipped reason=database_unavailable")
     
     # 【新增】获取当前实验ID，如果不存在则创建
     def get_or_create_current_experiment_id(self):
@@ -205,7 +228,11 @@ class AppWindow(QMainWindow):
                     timestamp=timestamp,
                     config_snapshot=config_snapshot
                 )
-                print(f"新实验 '{text}' 已创建，ID: {self.current_experiment_id}")
+                logger.info(
+                    "event=experiment_created name=%s experiment_id=%s",
+                    text,
+                    self.current_experiment_id,
+                )
             else:
                 return None  # 用户取消
         return self.current_experiment_id
@@ -342,7 +369,10 @@ class AppWindow(QMainWindow):
             )
             self._hardware_mode_warning_shown = True
         
-        print(f"硬件模式已自动调整为 {'Real Hardware' if actual_mode else 'Mock API'}。")
+        logger.info(
+            "event=hardware_mode_selected mode=%s",
+            "real" if actual_mode else "mock",
+        )
     
     def _establish_controller(self, requested_mode, allow_fallback=True):
         """
@@ -418,7 +448,7 @@ class AppWindow(QMainWindow):
     
     def switch_to_initial_view(self, mode_name):
         """切换到初始视图模式"""
-        print(f"切换到初始视图模式: {mode_name}")
+        logger.info("event=initial_view_selected mode=%s", mode_name)
         if mode_name == "Color":
             self.stacked_widget.setCurrentWidget(self.colorimetry_page)
         else:
@@ -1000,30 +1030,33 @@ class AppWindow(QMainWindow):
 
     def closeEvent(self, event):
         """关闭事件处理"""
+        logger.info("event=application_shutdown_started")
         # 先停所有后台活动，确保没人还在往 db 写
         if hasattr(self, 'measurement_page'):
             try:
                 self.measurement_page.stop_all_activities()
+                logger.info("event=measurement_activities_stopped")
             except Exception as exc:
-                print(f"stop_all_activities 异常: {exc}")
+                logger.exception("event=measurement_shutdown_failed")
 
         # 由采集服务停止并等待批量线程，GUI 不直接操作 QThread。
         service = getattr(self, "batch_service", None)
         if service is not None:
             try:
                 service.close(timeout_s=2.0)
+                logger.info("event=batch_service_closed")
             except RuntimeError:
-                pass
+                logger.warning("event=batch_service_already_closed")
 
         # 最后关数据库
         if self.db_manager:
             try:
                 self.db_manager.close()
-                print("数据库连接已关闭。")
+                logger.info("event=database_closed")
             except Exception as exc:
-                print(f"关闭数据库异常: {exc}")
+                logger.exception("event=database_close_failed")
 
-        print("正在退出应用...")
+        logger.info("event=application_shutdown_completed")
         event.accept()
 
     def _update_measurement_page_theme(self):
@@ -1048,7 +1081,7 @@ class AppWindow(QMainWindow):
                 ]:
                     apply_plot_theme(plot, theme)
         except Exception as exc:
-            print(f"更新测量页面主题时出错: {exc}")
+            logger.exception("event=measurement_theme_update_failed")
     def _persist_imported_spectra(self, base_label: str, spectra_entries: List[Dict[str, Any]], import_context: Dict[str, Any]):
         """持久化导入的光谱数据"""
         if not self.db_manager or not spectra_entries:
@@ -1136,8 +1169,11 @@ class AppWindow(QMainWindow):
                     instrument_info=instrument_info,
                     processing_info=processing_info
                 )
-        except Exception as exc:
-            print(f"Failed to persist imported spectra: {exc}")
+        except Exception:
+            logger.exception(
+                "event=imported_spectra_persist_failed count=%s",
+                len(spectra_entries),
+            )
 
     def _token_matches_keyword(self, token: str, keyword: str) -> bool:
         if keyword == "abs":
@@ -1299,7 +1335,10 @@ class AppWindow(QMainWindow):
         
         spectra_list = load_spectra_from_path(dir_path, mode='folder')
         if spectra_list:
-            print(self.tr("Successfully loaded {0} spectra from the selected folder.").format(len(spectra_list)))
+            logger.info(
+                "event=spectra_folder_imported count=%s",
+                len(spectra_list),
+            )
 
             spectra_list = self._apply_spectrum_classification(spectra_list)
             win = AnalysisWindow(spectra_data=spectra_list, parent=self)
@@ -1349,7 +1388,10 @@ class AppWindow(QMainWindow):
         
         spectra_list = load_spectra_from_path(file_path, mode='file')
         if spectra_list:
-            print(self.tr("Successfully loaded {0} spectra from the selected file.").format(len(spectra_list)))
+            logger.info(
+                "event=spectra_file_imported count=%s",
+                len(spectra_list),
+            )
 
             spectra_list = self._apply_spectrum_classification(spectra_list)
             win = AnalysisWindow(spectra_data=spectra_list, parent=self)
@@ -1389,14 +1431,14 @@ class AppWindow(QMainWindow):
         if self.stacked_widget.currentWidget() is self.measurement_page:
             self.measurement_page._find_all_peaks()
         else:
-            print(self.tr("Please switch to the measurement page before using the peak finding feature."))
+            logger.warning("event=peak_search_skipped reason=measurement_page_inactive")
     
     def _trigger_find_main_peak(self):
         """触发查找主共振峰"""
         if self.stacked_widget.currentWidget() is self.measurement_page:
             self.measurement_page._find_main_resonance_peak()
         else:
-            print(self.tr("Please switch to the measurement page before using the main peak finding feature."))
+            logger.warning("event=main_peak_search_skipped reason=measurement_page_inactive")
     def _open_data_analysis_dialog(self):
         """打开数据分析对话框"""
         dialog = DataAnalysisDialog(self)
@@ -1607,7 +1649,7 @@ class AppWindow(QMainWindow):
         
         # 验证数据库连接
         if not self.db_manager:
-            print("数据库管理器未初始化，尝试重新初始化...")
+            logger.warning("event=batch_database_unavailable retry=true")
             self._initialize_database()
             if not self.db_manager:
                 QMessageBox.warning(
@@ -1619,7 +1661,7 @@ class AppWindow(QMainWindow):
         
         # 验证项目ID
         if self.current_project_id is None:
-            print("项目ID为空，尝试查找或创建默认项目...")
+            logger.warning("event=batch_project_unavailable retry=true")
             self._find_or_create_default_project()
             if self.current_project_id is None:
                 QMessageBox.critical(
@@ -1777,17 +1819,17 @@ class AppWindow(QMainWindow):
                 analysis_dialog.exec_()
     def _abort_batch_task(self):
         """中止批量采集任务并完全重置硬件控制器"""
-        print("正在中止批量采集任务...")
+        logger.info("event=batch_abort_started")
         
         service = getattr(self, "batch_service", None)
         if service is not None:
             service.close(timeout_s=2.0)
         
-        print("正在执行硬件控制器断开连接...")
+        logger.info("event=hardware_disconnect_started")
         FX2000Controller.disconnect()
         time.sleep(0.2)
         
-        print("正在重新连接硬件控制器...")
+        logger.info("event=hardware_reconnect_started")
         requested_mode = self.use_real_hardware
         controller, fallback_attempted = self._establish_controller(requested_mode, allow_fallback=True)
         self.controller = controller
@@ -1805,7 +1847,7 @@ class AppWindow(QMainWindow):
         else:
             self.measurement_page.controller = self.controller
             self.processor.wavelengths = self.controller.wavelengths
-            print("硬件重启并重新连接成功")
+            logger.info("event=hardware_reconnect_completed")
     def _on_batch_acquisition_finished(self):
         """
         当批量采集工作线程完成其任务后此函数被调用。
@@ -1891,10 +1933,10 @@ class AppWindow(QMainWindow):
             if os.path.exists(translation_path) and translator.load(translation_path):
                 app.installTranslator(translator)
                 self.translator = translator
-                print(f"Chinese translation loaded from {translation_path}.")
+                logger.info("event=translation_loaded language=zh")
                 return 'zh'
             
-            print(f"Warning: Chinese translation file not found or failed to load from {translation_path}.")
+            logger.warning("event=translation_load_failed language=zh")
         
         return 'en'
     def _switch_language(self, language):
@@ -1919,7 +1961,7 @@ class AppWindow(QMainWindow):
         """
         重新翻译当前窗口的所有UI文本。
         """
-        print("Retranslating UI...")
+        logger.info("event=ui_retranslation_started")
         
         self.setWindowTitle(self.tr("Nanophotonics sensing detection data visualization analysis system"))
         
@@ -2040,6 +2082,7 @@ class AppWindow(QMainWindow):
         # 创建新实例并将其存储在 self.db_explorer_window 中
         self.db_explorer_window = DatabaseExplorerDialog(parent=self)
         self.db_explorer_window.load_spectra_requested.connect(self._open_analysis_window_from_db)
+        self.db_explorer_window.reanalysis_requested.connect(self._open_reanalysis_window_from_db)
         
         # 使用 .show() 而不是 .exec_()
         self.db_explorer_window.show()
@@ -2048,9 +2091,37 @@ class AppWindow(QMainWindow):
         if not spectra_list:
             return
         
-        print(f"从数据库加载了 {len(spectra_list)} 条光谱，正在打开分析窗口...")
+        logger.info(
+            "event=database_spectra_loaded_into_analysis count=%s",
+            len(spectra_list),
+        )
         
         # 创建并显示 AnalysisWindow 来展示这些数据
         analysis_win = AnalysisWindow(spectra_data=spectra_list, parent=self)
         self.analysis_windows.append(analysis_win)
+        analysis_win.show()
+
+    def _open_reanalysis_window_from_db(self, spectrum_payload):
+        """Open immutable raw data in a new analysis window for reprocessing."""
+        if not spectrum_payload:
+            return
+        metadata = spectrum_payload.get("metadata") or {}
+        analysis_win = AnalysisWindow(
+            spectra_data=[
+                {
+                    "x": spectrum_payload.get("x"),
+                    "y": spectrum_payload.get("y"),
+                    "name": spectrum_payload.get("name", "Database Spectrum"),
+                    "metadata": metadata,
+                }
+            ],
+            parent=self,
+        )
+        analysis_win.reanalysis_context = metadata
+        self.analysis_windows.append(analysis_win)
+        logger.info(
+            "event=database_reanalysis_opened spectrum_set_id=%s processing_config_id=%s",
+            metadata.get("spectrum_set_id"),
+            metadata.get("processing_config_id"),
+        )
         analysis_win.show()

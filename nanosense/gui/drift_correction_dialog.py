@@ -6,6 +6,11 @@ from PyQt5.QtCore import QEvent  # 导入 QEvent
 import pyqtgraph as pg
 
 from nanosense.algorithms.kinetics import correct_drift
+from nanosense.utils.logging_config import get_logger
+from nanosense.utils.ui_feedback import show_status_message
+
+
+logger = get_logger(__name__)
 
 
 class DriftCorrectionDialog(QDialog):
@@ -102,7 +107,13 @@ class DriftCorrectionDialog(QDialog):
 
         self.corrected_y_data = correct_drift(self.time_data, self.y_data, start_time, end_time)
         self.corrected_curve.setData(self.time_data, self.corrected_y_data)
-        print(self.tr("Previewing correction using baseline from {0:.2f}s to {1:.2f}s.").format(start_time, end_time))
+        show_status_message(
+            self,
+            self.tr("Previewing correction using baseline from {0:.2f}s to {1:.2f}s.").format(
+                start_time, end_time
+            ),
+            event_logger=logger,
+        )
 
     def get_corrected_data(self):
         """在对话框关闭后，由主窗口调用此方法来获取最终结果。"""

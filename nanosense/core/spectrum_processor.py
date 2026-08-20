@@ -3,6 +3,10 @@
 import numpy as np
 from PyQt5.QtCore import QObject, pyqtSignal
 from scipy.signal import savgol_filter
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 class SpectrumProcessor(QObject):
@@ -47,7 +51,12 @@ class SpectrumProcessor(QObject):
         self.smoothing_method = method
         self.smoothing_window = window
         self.smoothing_order = order
-        print(f"平滑参数已更新: {method}, window={window}, order={order}")
+        logger.info(
+            "event=spectrum_smoothing_updated method=%s window=%s order=%s",
+            method,
+            window,
+            order,
+        )
         # 参数改变后重新计算
         self.process_and_emit()
     
@@ -58,7 +67,14 @@ class SpectrumProcessor(QObject):
         self.baseline_lambda = lam
         self.baseline_p = p
         self.baseline_niter = niter
-        print(f"基线校正参数已更新: enabled={enabled}, algorithm={algorithm}, lambda={lam}, p={p}, niter={niter}")
+        logger.info(
+            "event=spectrum_baseline_updated enabled=%s algorithm=%s lambda=%s p=%s niter=%s",
+            enabled,
+            algorithm,
+            lam,
+            p,
+            niter,
+        )
         # 参数改变后重新计算
         self.process_and_emit()
     
@@ -66,14 +82,18 @@ class SpectrumProcessor(QObject):
         """设置分析范围。"""
         self.analysis_start = start
         self.analysis_end = end
-        print(f"分析范围已更新: {start}-{end} nm")
+        logger.info(
+            "event=spectrum_range_updated start_nm=%s end_nm=%s",
+            start,
+            end,
+        )
         # 参数改变后重新计算
         self.process_and_emit()
 
     def set_mode(self, mode_name):
         """设置当前的测量模式。"""
         self.mode_name = mode_name
-        print(f"处理器模式已设置为: {self.mode_name}")
+        logger.info("event=spectrum_mode_updated mode=%s", self.mode_name)
         self.process_and_emit()  # 模式改变后立即重新计算
 
     def set_background(self):
@@ -84,7 +104,10 @@ class SpectrumProcessor(QObject):
         """将指定光谱存储为背景光谱。"""
         if spectrum is not None:
             self.background_spectrum = np.array(spectrum, copy=True)
-            print("背景光谱已更新。")
+            logger.info(
+                "event=spectrum_background_updated points=%s",
+                self.background_spectrum.size,
+            )
             self.background_updated.emit(self.wavelengths, self.background_spectrum)
             self.process_and_emit()
 
@@ -96,7 +119,10 @@ class SpectrumProcessor(QObject):
         """将指定光谱存储为参考光谱。"""
         if spectrum is not None:
             self.reference_spectrum = np.array(spectrum, copy=True)
-            print("参考光谱已更新。")
+            logger.info(
+                "event=spectrum_reference_updated points=%s",
+                self.reference_spectrum.size,
+            )
             self.reference_updated.emit(self.wavelengths, self.reference_spectrum)
             self.process_and_emit()
 

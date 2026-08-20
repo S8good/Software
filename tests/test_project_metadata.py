@@ -44,7 +44,11 @@ def test_project_metadata_matches_verified_py39_baseline():
     assert project["version"] == "0.1.0"
     assert project["requires-python"] == ">=3.9,<3.10"
     assert requirement_map(project["dependencies"]) == EXPECTED_RUNTIME
-    assert project["optional-dependencies"]["dev"] == ["pytest==8.3.4"]
+    assert project["optional-dependencies"]["dev"] == [
+        "pytest==8.3.4",
+        "pytest-qt==4.4.0",
+        "pytest-cov==5.0.0",
+    ]
     assert project["scripts"] == {
         "nanosense": "main:main",
         "nanosense-import-spectra": "scripts.import_spectra:main",

@@ -9,6 +9,10 @@ import re
 from nanosense.algorithms.peak_analysis import find_main_resonance_peak
 from nanosense.algorithms.preprocessing import baseline_als, smooth_savitzky_golay
 from nanosense.utils.file_io import load_wide_format_spectrum
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def process_excel_file(file_path):
@@ -109,7 +113,11 @@ def export_grouped_data(output_folder, grouped_data, selected_points):
                 df_to_export.to_excel(output_path, index=False)
                 exported_files.append(output_path)
             except Exception as e:
-                print(f"导出 {point_name} 到 {output_path} 时失败: {e}")
+                logger.exception(
+                    "event=grouped_export_failed point=%s output_path=%s",
+                    point_name,
+                    output_path,
+                )
 
     return exported_files
 
@@ -197,9 +205,16 @@ def generate_summary_reports(output_folder, grouped_data, selected_points, prepr
     try:
         positions_df.to_excel(positions_output_path, index=True)
         shifts_df.to_excel(shifts_output_path, index=True)
-        print(f"汇总表已保存到 {tables_dir}")
+        logger.info(
+            "event=summary_reports_exported output_dir=%s points=%s",
+            tables_dir,
+            len(positions_df.index),
+        )
     except Exception as e:
-        print(f"保存汇总表时出错: {e}")
+        logger.exception(
+            "event=summary_reports_export_failed output_dir=%s",
+            tables_dir,
+        )
 
 
 def aggregate_batch_files(folder_path):

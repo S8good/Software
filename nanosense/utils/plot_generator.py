@@ -10,6 +10,10 @@ import traceback
 from nanosense.algorithms.peak_analysis import find_main_resonance_peak
 from nanosense.algorithms.preprocessing import baseline_als, smooth_savitzky_golay
 from nanosense.utils.config_manager import load_settings
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def generate_plots_for_point(point_name, df, output_folder, preprocessing_params):
@@ -33,7 +37,10 @@ def generate_plots_for_point(point_name, df, output_folder, preprocessing_params
 
         spectra_df = df.iloc[:, 3:]
         if spectra_df.empty:
-            print(f"警告：在为 {point_name} 生成图表时，未找到任何有效的光谱数据列（从第4列开始）。")
+            logger.warning(
+                "event=plot_generation_skipped reason=no_spectrum_columns point=%s",
+                point_name,
+            )
             return
 
         # (fig1, 原始光谱图部分无变化)
@@ -156,5 +163,5 @@ def generate_plots_for_point(point_name, df, output_folder, preprocessing_params
     except Exception as e:
         error_details = traceback.format_exc()
         detailed_error_message = f"为 {point_name} 生成图表时发生严重错误: {e}\n\n{error_details}"
-        print(detailed_error_message)
+        logger.exception("event=plot_generation_failed point=%s", point_name)
         raise e

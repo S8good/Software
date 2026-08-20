@@ -9,6 +9,10 @@ import pandas as pd
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 import io
 from collections import defaultdict
+from nanosense.utils.logging_config import get_logger
+
+
+logger = get_logger(__name__)
 
 def _get_start_path(default_path=""):
     """一个内部辅助函数，用于确定文件对话框的起始路径。"""
@@ -38,7 +42,10 @@ def save_spectrum(parent, mode_name, x_data, y_data, default_path=""):
                 df.to_excel(file_path, index=False, engine='openpyxl')
             else:
                 df.to_csv(file_path, index=False, float_format='%.8f')
-            print(f"数据已成功保存到: {file_path}")
+            logger.info(
+                "event=spectrum_saved file=%s",
+                os.path.basename(file_path),
+            )
             return file_path
         except Exception as e:
             # 【修改】使用 parent.tr() 来翻译UI字符串
@@ -120,7 +127,10 @@ def load_wide_format_spectrum(file_path):
 
     except Exception as e:
         error_msg = f"加载并解析宽格式文件时出错: {e}"
-        print(error_msg)
+        logger.exception(
+            "event=wide_spectrum_load_failed file=%s",
+            os.path.basename(file_path),
+        )
         return None, None, error_msg
 
 def load_spectrum_from_path(file_path):
@@ -129,7 +139,10 @@ def load_spectrum_from_path(file_path):
     能自动处理Excel、逗号分隔或空白分隔的文本文件。
     """
     if not os.path.exists(file_path):
-        print(f"文件不存在: {file_path}")
+        logger.warning(
+            "event=spectrum_file_missing file=%s",
+            os.path.basename(file_path),
+        )
         return None, None
 
     try:
@@ -161,18 +174,25 @@ def load_spectrum_from_path(file_path):
             raise ValueError("Pandas failed to parse with common delimiters.")
 
     except Exception as e:
-        print(f"使用 Pandas 加载文件时发生错误 {file_path}: {e}")
+        logger.warning(
+            "event=spectrum_pandas_load_failed file=%s error=%s",
+            os.path.basename(file_path),
+            e,
+        )
         # 3. 最后的备用方案：使用 numpy.loadtxt
         # 这对于非常规或不标准的文本格式可能有效
         try:
-            print("尝试使用 numpy.loadtxt 作为备用方法...")
+            logger.info("event=spectrum_load_fallback method=numpy_loadtxt")
             # delimiter=None 会自动识别空白或逗号
             data = np.loadtxt(file_path, delimiter=None, skiprows=1, comments='#')
             x_data = data[:, 0]
             y_data = data[:, 1]
             return x_data, y_data
         except Exception as e2:
-            print(f"使用 numpy.loadtxt 备用方法加载失败: {e2}")
+            logger.exception(
+                "event=spectrum_load_failed file=%s",
+                os.path.basename(file_path),
+            )
             return None, None
 
 def load_spectra_from_path(path, mode='folder'):
@@ -205,11 +225,14 @@ def load_spectra_from_path(path, mode='folder'):
                 try:
                     df = pd.read_csv(path, header=0, sep=',')
                     if df.shape[1] < 2: df = pd.read_csv(path, header=0, sep=r'\s+')
-                except:
+                except Exception:
                     df = pd.read_csv(path, header=0, sep=r'\s+')
 
             if df.shape[1] < 2:
-                print(f"警告：文件 {os.path.basename(path)} 的列数少于2，已跳过。")
+                logger.warning(
+                    "event=multi_spectrum_file_insufficient_columns file=%s",
+                    os.path.basename(path),
+                )
                 return []
 
             # 第一列是波长
@@ -228,8 +251,11 @@ def load_spectra_from_path(path, mode='folder'):
                     'y': y_data[valid_indices],
                     'name': f"{os.path.basename(path)} - {col_name}"
                 })
-        except Exception as e:
-            print(f"从文件 {path} 加载多列数据时发生错误: {e}")
+        except Exception:
+            logger.exception(
+                "event=multi_spectrum_file_load_failed file=%s",
+                os.path.basename(path),
+            )
             return []
 
     return spectra_list
@@ -281,10 +307,10 @@ def load_xy_data_from_file(parent, default_path=""):
                     df = pd.read_csv(file_path, header=0, sep=',')
                     if df.shape[1] < 2:
                         # 【核心修改】使用新的推荐参数 sep='\s+'
-                        df = pd.read_csv(file_path, header=0, sep='\s+')
+                        df = pd.read_csv(file_path, header=0, sep=r'\s+')
                 except Exception:
                     # 【核心修改】使用新的推荐参数 sep='\s+'
-                    df = pd.read_csv(file_path, header=0, sep='\s+')
+                    df = pd.read_csv(file_path, header=0, sep=r'\s+')
 
             if df.shape[1] < 2:
                 raise ValueError("The file does not contain at least two columns.")
@@ -331,7 +357,10 @@ def save_batch_spectrum_data(file_path, wavelengths, absorbance_spectra, full_ab
             df_full.to_excel(full_range_output_path, index=False, engine='openpyxl')
         else:
             df_full.to_csv(full_range_output_path, index=False, float_format='%.8f')
-        print(f"全波长范围处理后吸光度数据已保存到: {full_range_output_path}")
+        logger.info(
+            "event=batch_spectrum_full_range_saved file=%s",
+            os.path.basename(full_range_output_path),
+        )
 
         # --- 如果没有提供裁切范围或吸收光谱数据，则在此结束 ---
         if crop_start_wl is None or crop_end_wl is None or not absorbance_spectra:
@@ -347,7 +376,10 @@ def save_batch_spectrum_data(file_path, wavelengths, absorbance_spectra, full_ab
                 results_data_dict[f"Absorbance_{i + 1}"] = abso
 
         if len(results_data_dict.keys()) <= 1:
-            print(f"警告: {base_filename} 没有有效的吸收光谱数据可以保存，已跳过裁切报告的生成。")
+            logger.warning(
+                "event=batch_spectrum_crop_skipped file=%s reason=no_valid_absorbance",
+                base_filename,
+            )
             return
 
         df_results_cropped = pd.DataFrame(results_data_dict)
@@ -379,7 +411,10 @@ def save_batch_spectrum_data(file_path, wavelengths, absorbance_spectra, full_ab
             df_combined_cropped.to_excel(spectra_data_path, index=False, engine='openpyxl')
         else:
             df_combined_cropped.to_csv(spectra_data_path, index=False, float_format='%.8f')
-        print(f"裁切后的组合数据已保存到: {spectra_data_path}")
+        logger.info(
+            "event=batch_spectrum_cropped_saved file=%s",
+            os.path.basename(spectra_data_path),
+        )
 
         # 任务 3: 创建 `aggregated_data` 文件夹和交替格式的Excel
         aggregated_dir = os.path.join(cropped_range_dir, 'aggregated_data')
@@ -399,7 +434,10 @@ def save_batch_spectrum_data(file_path, wavelengths, absorbance_spectra, full_ab
             df_aggregated.to_excel(aggregated_path, index=False, engine='openpyxl')
         else:
             df_aggregated.to_csv(aggregated_path, index=False, float_format='%.8f')
-        print(f"聚合的交替格式报告已保存到: {aggregated_path}")
+        logger.info(
+            "event=batch_spectrum_aggregated_saved file=%s",
+            os.path.basename(aggregated_path),
+        )
 
         # 任务 4: 创建 `per_point_sheets` 文件夹和每点一页的Excel
         # (这个功能强制使用Excel，因为CSV不支持多工作表)
@@ -422,12 +460,17 @@ def save_batch_spectrum_data(file_path, wavelengths, absorbance_spectra, full_ab
 
                 df_sheet = pd.DataFrame(sheet_data)
                 df_sheet.to_excel(writer, sheet_name=sheet_name, index=False)
-        print(f"每点一页格式的报告已保存到: {per_point_path}")
+        logger.info(
+            "event=batch_spectrum_per_point_saved file=%s",
+            os.path.basename(per_point_path),
+        )
 
 
-    except Exception as e:
-        print(f"保存批量光谱数据时发生严重错误: {e}")
-        traceback.print_exc()  # 打印详细的错误追溯
+    except Exception:
+        logger.exception(
+            "event=batch_spectrum_save_failed file=%s",
+            os.path.basename(file_path),
+        )
 
 def load_wide_format_spectrum(file_path):
     """
@@ -525,6 +568,7 @@ def export_experiments_to_excel(experiments_data, file_path):
 
         return True, ""
     except Exception as e:
+        logger.exception("event=experiment_export_failed")
         return False, str(e)
 # 【新增】导出逻辑的主函数
 def export_data_custom(parent, experiments_data):
@@ -763,6 +807,7 @@ def _export_detailed_spectra(experiments_data, file_path):
 
         return True, ""
     except Exception as e:
+        logger.exception("event=detailed_spectra_export_failed")
         return False, str(e)
 # 【最终版本】生成“聚合数据”文件的辅助函数
 def _export_aggregated_results(experiments_data, file_path):
@@ -827,4 +872,5 @@ def _export_aggregated_results(experiments_data, file_path):
 
         return True, ""
     except Exception as e:
+        logger.exception("event=aggregated_results_export_failed")
         return False, str(e)
